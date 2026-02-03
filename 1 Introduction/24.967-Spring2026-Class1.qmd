@@ -1,0 +1,12 @@
+---
+title: "24.967 Class 1 Introduction"
+author: "Adam Albright"
+format: html
+editor: visual
+---
+
+# Introduction
+
+## A little bit about R, RStudio, etc.
+
+This is a test. This is only a test.
