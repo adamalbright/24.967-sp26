@@ -5,8 +5,266 @@ format: html
 editor: visual
 ---
 
+```{r}
+#| echo: false
+#| message: false
+#| error: true
+#| warning: true
+# This script uses tidyverse packages (dplyr, ggplot)
+library(tidyverse)
+library(readxl)
+```
+
 # Introduction
 
 ## A little bit about R, RStudio, etc.
 
-This is a test. This is only a test.
+One of the first things we usually want to do in R is read in some data.
+
+We can read in the file either from Excel, or a CSV or tab-delimited text file. The `read_csv()` and `read_excel()` functions read files into "tibbles", which are tidyverse versions of data frames.
+
+```{r}
+# Read in the file. 
+gv = read_csv("glide-vowel.csv")
+gv = read_excel("glide-vowel.xls")
+```
+
+It can be useful to do a sanity check that the file is as you expect. This can be done in RStudio/Positron with the data viewer, but more information can be gotten from `str()` or `glimpse()`.
+
+```{r}
+str(gv)
+```
+
+```{r}
+glimpse(gv)
+```
+
+## Subsetting the data
+
+We are interested in formant values for glides (segments *j*,*w*) vs. vowels (segments *i*,*u*). The first question is how to get just the F1 or F2 values (i.e., a single column). This is done with '`$`'.
+
+```{r}
+gv$F1
+```
+
+The next question is how to get just a subset of the F1 values, such as those for 'i' or 'j'. The `subset()` command is one convenient way to quickly grab a subset of a dataframe or tibble, based on conditions.
+
+```{r}
+# Examine just the rows for segment 'j'
+subset(gv, segment=='i')
+
+```
+
+A more general-purpose way of thinking about grabbing a subset of the data is to 'pipe' the data frame (or tibble) through the `filter()` command. This is useful because you can stack multiple pipes, through `filter()` and other commands.
+
+```{r}
+gv %>% filter(segment=='i')
+gv %>% filter(segment=='j')
+```
+
+So, for example, we can examine just the rows for vowels:
+
+```{r}
+# Examine just the rows for vowels
+gv %>% filter(segment %in% c('i','u'))
+```
+
+Putting this together, we can use `filter()` to restrict ourselves to specific rows, and then grab selected column. The following are equivalent, but the first is usually more legible:
+
+-   `gv %>% filter(segment=='j') %>% pull(F1)`
+
+-   `pull(filter(gv,segment=="j"),F1)`
+
+```{r}
+# The F1 values for 'j'
+gv %>% filter(segment=='j') %>% pull(F1) 
+
+# Select does the same, but outputs a tibble, and can select multiple columns, if desired
+gv %>% filter(segment=='j') %>% select(F1)
+gv %>% filter(segment=='j') %>% select(F1,F2)
+
+```
+
+## Comparing values across groups
+
+Using the functions above, we can grab all the F1 values for the front glide \[j\], and calculate the mean and standard deviation with the `mean()` and `sd()` functions.
+
+```{r}
+# The mean of F1 for 'j'
+j.mean = gv %>% filter(segment=='j') %>% pull(F1) %>% mean()
+
+# As is almost always the case in R, there are multiple ways to do the same thing. For example, the following would also have worked to address the F1 column directly, rather than pulling it from gv:
+# j.mean = gv %>% filter(segment=='j') %>% {mean(.$F1)}
+
+# The s.d. of F1 for 'j'
+j.sd = gv %>% filter(segment=='j') %>% pull(F1) %>% sd()
+```
+
+And likewise for the front vowel 'i', or 'i' and 'j' together.
+
+```{r}
+i.mean = gv %>% filter(segment=='i') %>% pull(F1) %>% mean()
+i.sd = gv %>% filter(segment=='i') %>% pull(F1) %>% sd()
+
+
+# And we'll also eventually want mean of i and j together
+ij.mean = gv %>% filter(segment %in% c('i','j')) %>% pull(F1) %>% mean()
+```
+
+It's also convenient to just produce a summary table
+
+```{r}
+gv %>% group_by(segment) %>% summarise(mean_f1 = mean(F1), sd_f1 = sd(F1))
+```
+
+## Some simple plots
+
+R does have a number of simple plotting functions built in, which are good for lightweight plots. For example, `boxplot(X1, X2, ...)` can make a simple box plot.
+
+### Box plots
+
+```{r}
+boxplot(gv %>% filter(segment=="i") %>% pull(F1), gv %>% filter(segment=="j") %>% pull(F1))
+
+# More values, and some labels
+boxplot(gv %>% filter(segment=="i") %>% pull(F1), gv %>% filter(segment=="j") %>% pull(F1), gv %>% filter(segment=="u") %>% pull(F1), gv %>% filter(segment=="w") %>% pull(F1), names=c("i","j","u","w"))
+
+# Scale widths
+boxplot(gv %>% filter(segment=="i") %>% pull(F1), gv %>% filter(segment=="j") %>% pull(F1), gv %>% filter(segment=="u") %>% pull(F1), gv %>% filter(segment=="w") %>% pull(F1), names=c("i","j","u","w"), varwidth=TRUE)
+
+# Add notches
+boxplot(gv %>% filter(segment=="i") %>% pull(F1), gv %>% filter(segment=="j") %>% pull(F1), gv %>% filter(segment=="u") %>% pull(F1), gv %>% filter(segment=="w") %>% pull(F1), names=c("i","j","u","w"), notch=TRUE)
+```
+
+That's cumbersome-- we can see that it would be useful to just be able to group by 'segment'. `ggplot` can group easily.
+
+```{r}
+p <- ggplot(gv, aes(x=segment, y=F1)) + 
+  geom_boxplot(fill=c("white","lightgray","white","lightgray"))
+p
+
+p + theme_bw() + theme(axis.text=element_text(size=12))
+```
+
+While we're visually appreciating the distribution of the data, it is also sometimes useful to look at violin/bean plots.
+
+### Violin plots
+
+The following shows two options: one with the `vioplot` package, and one with `ggplot`.
+
+```{r}
+library(vioplot)
+vioplot(gv %>% filter(segment=="i") %>% pull(F1), gv %>% filter(segment=="j") %>% pull(F1), gv %>% filter(segment=="u") %>% pull(F1), gv %>% filter(segment=="w") %>% pull(F1), names=c("i","j","u","w"),log="")
+
+# The following is easier
+p <- ggplot(gv, aes(x=segment, y=F1)) + geom_violin()
+p
+
+p <- ggplot(gv, aes(x=segment, y=F1)) + geom_violin() + geom_boxplot(width=0.1)  + stat_summary(fun=median, geom="point", size=2, color="red")
+p
+
+```
+
+### Bean plots
+
+```{r}
+library(beanplot)
+beanplot(gv %>% filter(segment=="i") %>% pull(F1), gv %>% filter(segment=="j") %>% pull(F1), gv %>% filter(segment=="u") %>% pull(F1), gv %>% filter(segment=="w") %>% pull(F1), names=c("i","j","u","w"),log="")
+```
+
+### Moving towards statistical comparison of distributions
+
+The following plots the overlap in distributions (mean ± 3 standard deviations)
+
+```{r}
+x = seq(min(j.mean-3*j.sd,i.mean-3*i.sd), max(j.mean+3*j.sd,i.mean+3*i.sd))
+y.j = dnorm(x, mean = j.mean, sd = j.sd)
+y.i = dnorm(x, mean = i.mean, sd = i.sd)
+
+plot(x,y.j, xlab="F1", ylab = "density", type="n")
+
+# Make a list the same length as the number of j's
+j.dots = rep(0,length(gv[gv$segment == 'j',]$F1))
+# Or, jittered
+j.dots = sample(seq(0,.001,.0000001),length(gv[gv$segment == 'j',]$F1),replace=T)
+
+# And for 'i'
+i.dots = rep(0,length(gv[gv$segment == 'i',]$F1))
+# Or, jittered
+i.dots = sample(seq(0,.001,.0000001),length(gv[gv$segment == 'i',]$F1),replace=T)
+
+# Plot the 'j' dots (green for glide)
+points(gv[gv$segment == 'j',]$F1,j.dots,col="Lime Green",pch=1)
+
+# Legend with just glides
+#legend(max(x)*.95,max(y.i,y.j)*.95,c("j"),col=c("Lime Green"),pch=c(1))
+
+# Plot the 'i' dots (violet for vowel)
+points(gv[gv$segment == 'i',]$F1,i.dots,col="Dark Violet",pch=19)
+
+# Legend with both
+legend(max(x)*.95,max(y.i,y.j)*.95,c("j","i"),col=c("Lime Green", "Dark Violet"),pch=c(1,19))
+
+# Add mean for 'j'
+abline(v = j.mean, lty=2, col="Lime Green")
+
+# Add mean for 'i'
+abline(v = i.mean, lty=2, col="Dark Violet")
+
+# Add mean for 'i' and 'j' combined
+abline(v = ij.mean, lty=2, col="black")
+
+# Add s.d.'s for 'j'
+abline(v = j.mean+j.sd, lty=1, col="Lime Green")
+abline(v = j.mean-j.sd, lty=1, col="Lime Green")
+polygon(c(j.mean-j.sd,j.mean-j.sd,j.mean+j.sd,j.mean+j.sd),c(0,.02,.02,0),col="Pale Green",density=20)
+
+# Add s.d.'s for 'i'
+abline(v = i.mean-i.sd, lty=1, col="Dark Violet")
+abline(v = i.mean+i.sd, lty=1, col="Dark Violet")
+polygon(c(i.mean-i.sd,i.mean-i.sd,i.mean+i.sd,i.mean+i.sd),c(0,.02,.02,0),col="Violet",density=25)
+
+# Add "noise lines" from ij mean
+arrows(c(ij.mean,ij.mean),c(.005,.005),c(ij.mean-i.sd,ij.mean+i.sd))
+# Or, add "noise lines" from separate means
+arrows(c(j.mean,j.mean),c(.005,.005),c(j.mean-j.sd,j.mean+j.sd),col="Lime Green")
+
+arrows(c(i.mean,i.mean),c(.0055,.0055),c(i.mean-i.sd,i.mean+i.sd),col="Dark Violet")
+
+```
+
+Or, we can plot the distributions more directly.
+
+```{r}
+
+# Or, plot distributions
+x = seq(min(j.mean-3*j.sd,i.mean-3*i.sd), max(j.mean+3*j.sd,i.mean+3*i.sd))
+y.j = dnorm(x, mean = j.mean, sd = j.sd)
+y.i = dnorm(x, mean = i.mean, sd = i.sd)
+plot(x,y.j, xlab="F1", ylab = "density", type="n")
+lines(x,y.j, type="l",col="Lime Green")
+lines(x,y.i, type="l",col="Dark Violet")
+
+# Plot actual vs. assumed distributions
+plot(density(gv[gv$segment == 'j',]$F1), xlab="F1", ylab = "density",col="Lime Green",main="",xlim=c(150,450))
+lines(x,y.j, type="l",lty=3,col="Lime Green")
+
+
+lines(density(gv[gv$segment == 'i',]$F1), xlab="F1", ylab = "density",col="Dark Violet",main="")
+lines(x,y.i, type="l",lty=3,col="Dark Violet")
+
+abline(v = j.mean, lty=2, col="Lime Green")
+
+# Add mean for 'i'
+abline(v = i.mean, lty=2, col="Dark Violet")
+
+```
+
+Previewing: t-test for i vs j
+
+```{r}
+t.test(
+  gv %>% filter(segment=="i") %>% pull(F1), 
+  gv %>% filter(segment=="j") %>% pull(F1)
+)
+```

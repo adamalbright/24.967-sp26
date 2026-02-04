@@ -1,0 +1,124 @@
+---
+title: "ttest.Rmd"
+output: html_document
+date: "2026-02-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+Read in and set up data
+- change path
+
+```{r}
+gv = read_csv("~/Documents/Class Materials/24.967 Experimental phonology/glide-vowel.csv")
+
+# declare factor variables
+gv$subject = factor(gv$subject)
+gv$word = factor(gv$word)
+gv$segment = factor(gv$segment)
+```
+
+calculate means and sd's for each segment type
+
+```{r}
+gv %>% group_by(segment) %>% summarise(mean_f1 = mean(F1), sd_f1 = sd(F1))
+
+```
+calculate single sample t-test for the hypothesis that mean F1 [j] !=310 Hz
+
+step-by-step calculation
+
+```{r}
+
+# extract vector of F1 values for [j]
+F1j = gv %>% filter(segment=="j") %>% pull(F1)
+
+# estimated sd of [j]
+sd_j = sd(F1j)
+
+# number of observations of [j]
+n_j = length(F1j)
+
+# estimated sd of the sampling distribution of the mean
+sdm_j = sd_j/sqrt(n_j)
+
+# sample mean F1 of [j]
+m_j = mean(F1j)
+
+# t score
+tscore = (m_j-310)/sdm_j
+
+# probability of observed t score or more extreme
+2*(1-pt(abs(tscore), df=n_j-1))
+```
+
+use the R t.test function
+
+```{r}
+t.test(F1j,mu =310 )
+```
+
+Equivalent linear model
+
+```{r}
+
+lmod1 = lm(F1j-310~1)
+
+summary(lmod)
+```
+
+Calculate two sample t test, assuming equal variances
+Hypothesis: mean F1 of j is not equal to mean F1 of i
+
+step-by-step calculation
+
+```{r}
+# extract vector of F1 values for [i]
+F1i = gv %>% filter(segment=="i") %>% pull(F1)
+
+# estimated sd of [i]
+sd_i =  sd(F1i)
+# number of observations of [i]
+n_i = length(F1i)
+
+# pooled standard deviation of [i] and [j]
+sdp = sqrt(((n_j-1)*sd_j^2+(n_i-1)*sd_i^2)/(n_j+n_i-2))
+
+# estimated sd of the sampling distribution of the difference in means
+sd2m = sdp*sqrt((1/n_j)+(1/n_i))
+
+# sample mean F1 of [i]
+m_i = mean(F1i)
+
+# t score
+tscore2 = (m_j-m_i)/sd2m
+
+# probability of t score or more extreme
+2*(1-pt(abs(tscore2), df=n_j+n_i-2))
+
+```
+
+Use t.test function:
+
+```{r}
+t.test(F1j,F1i, var.equal = TRUE)
+```
+
+# equivalent linear model
+
+```{r}
+# take subset of data containing just [i] and [j]
+ij_data = gv %>% filter(segment=="i" | segment =="j")
+
+lmod =  lm(F1~segment, data = ij_data)
+summary(lmod)
+```
+Two sample t-test, assuming unequal variances
+
+```{r}
+
+t.test(F1j,F1i)
+```
