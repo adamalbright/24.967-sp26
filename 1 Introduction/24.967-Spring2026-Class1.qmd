@@ -51,7 +51,7 @@ The next question is how to get just a subset of the F1 values, such as those fo
 
 ```{r}
 # Examine just the rows for segment 'j'
-subset(gv, segment=='i')
+subset(gv, segment=='j')
 
 ```
 
