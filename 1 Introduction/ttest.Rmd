@@ -13,7 +13,7 @@ Read in and set up data
 - change path
 
 ```{r}
-gv = read_csv("~/Documents/Class Materials/24.967 Experimental phonology/glide-vowel.csv")
+gv = read_csv("glide-vowel.csv")
 
 # declare factor variables
 gv$subject = factor(gv$subject)

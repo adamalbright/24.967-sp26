@@ -17,7 +17,7 @@ library(readxl)
 
 # Introduction
 
-## A little bit about R, RStudio, etc.
+## A little bit about R, RStudio, etc....
 
 One of the first things we usually want to do in R is read in some data.
 
