@@ -1,5 +1,5 @@
 # open data file. Replace the path
-gv = read.csv("~/Documents/Class Materials/24.963 linguistic phonetics/glide experiment/data22.csv")
+gv = read.csv("data22.csv")
 
 # exclude outlier
 gv = filter(gv, is.na(glideF1)|glideF1 > 150)
