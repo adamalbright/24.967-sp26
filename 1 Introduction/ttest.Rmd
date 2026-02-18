@@ -9,8 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 ```
 
-Read in and set up data
-- change path
+Read in and set up data - change path
 
 ```{r}
 gv = read_csv("glide-vowel.csv")
@@ -27,6 +26,7 @@ calculate means and sd's for each segment type
 gv %>% group_by(segment) %>% summarise(mean_f1 = mean(F1), sd_f1 = sd(F1))
 
 ```
+
 calculate single sample t-test for the hypothesis that mean F1 [j] !=310 Hz
 
 step-by-step calculation
@@ -70,8 +70,7 @@ lmod1 = lm(F1j-310~1)
 summary(lmod)
 ```
 
-Calculate two sample t test, assuming equal variances
-Hypothesis: mean F1 of j is not equal to mean F1 of i
+Calculate two sample t test, assuming equal variances Hypothesis: mean F1 of j is not equal to mean F1 of i
 
 step-by-step calculation
 
@@ -116,6 +115,7 @@ ij_data = gv %>% filter(segment=="i" | segment =="j")
 lmod =  lm(F1~segment, data = ij_data)
 summary(lmod)
 ```
+
 Two sample t-test, assuming unequal variances
 
 ```{r}
