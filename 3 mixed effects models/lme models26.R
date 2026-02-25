@@ -160,4 +160,15 @@ library(blme)
 blmem = blmer(intensity~affricate*context+(affricate*context|subject)+(context|word), data=aff)
 summary(blmem)
 
+# try glmmTMB
+library(glmmTMB)
+# singular when fitted by REML
+glmmTMB_aff_max = glmmTMB(intensity~affricate*context+(1+affricate*context|subject)+(context|word), 
+                          data=aff, family=gaussian(), REML=TRUE)
+
+glmmTMB_c4 = glmmTMB(F2C1~C1*F2V+(C1|speaker), data = CVC, family= gaussian(), REML=TRUE)
+summary(glmmTMB_c4)
+
+glmmTMB_c5 = glmmTMB(F2C1~C1*F2V+(F2V|speaker), data = CVC, family= gaussian(), REML=TRUE)
+summary(glmmTMB_c5)
 
