@@ -1,7 +1,7 @@
 library(tidyverse)
 
 # Function to back-transform coefficients of a simple linear model fitted to 
-# scaled variables. This function is only applicable to models withou interactions.
+# scaled variables. This function is only applicable to models without interactions.
 # rescale.coefs()is a function that takes three arguments, beta,m,s and returns 
 # a vector of back-transformed coefficients.
 #   beta is a vector of the coefficients of the transformed model.
