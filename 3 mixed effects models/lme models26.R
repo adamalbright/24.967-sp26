@@ -7,7 +7,7 @@ library(lme4)
 library(tidyverse)
 
 # load affricate data
-affricate_data <- read.csv("~/Documents/Class Materials/24.963 linguistic phonetics/affricates experiment/affricate_data.csv")
+affricate_data <- read.csv("2\ Linear\ Models/affricate_data.csv")
 
 # exclude subject vv
 aff = subset(affricate_data, !(subject=="vv"))
@@ -73,7 +73,9 @@ anova(lme_aff_red1, lme_aff_red4, refit=FALSE)
 
 # Singular fit, convergence problems and strategies
 # read in the CVC data
-CVC = read.csv("~/Documents/Class Materials/24.967 experimental phonology/engCVC.csv")
+CVC = read.csv("2 Linear Models/engCVC.csv")
+
+CVC$F2V = as.numeric(CVC$F2V)
 
 # fit a mixed effects model to estimate locus equations for all C1's 
 # singular fit
@@ -87,6 +89,7 @@ lmec3 = lmer(F2C1~C1*F2V+(C1*F2V||speaker), data = CVC)
 
 # singular
 lmec4 = lmer(F2C1~C1*F2V+(C1|speaker), data = CVC)
+summary(lmec4)
 
 # convergence warnings
 lmec5 = lmer(F2C1~C1*F2V+(F2V|speaker), data = CVC)
@@ -103,6 +106,25 @@ summary(lmec4scale)
 
 lmec5scale = lmer(F2C1~C1*F2Vscale+(F2Vscale|speaker), data = CVC)
 summary(lmec5scale)
+
+m = mean(CVC$F2V, na.rm=TRUE)
+s = sd(CVC$F2V, na.rm=TRUE)
+
+# back-transform coefficients
+coefs = fixef(lmec5scale)
+
+# b0
+coefs[1]-coefs[4]*m/s
+# b_d
+coefs[2]-coefs[5]*m/s
+# b_g
+coefs[3]-coefs[6]*m/s
+# b_F2V
+coefs[4]/s
+# b_d:F2V
+coefs[5]/s
+# b_g:F2V
+coefs[6]/s
 
 ## 3. recompute gradient and Hessian with Richardson extrapolation
 devfun <- update(lmec5, devFunOnly=TRUE)
@@ -123,8 +145,8 @@ lmec5@optinfo$derivs
 
 # Try many optimizers
 # To access all optimizers, install optimx and dfoptim packages
-lmec5 = allFit(lmec5)                      
-summary(lmec5)
+lmec5_all = allFit(lmec5)                      
+summary(lmec5_all)
 
 # use blmer to avoid singular fit/convergence problems
 # default priors work
