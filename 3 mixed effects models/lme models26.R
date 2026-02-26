@@ -68,7 +68,7 @@ anova(lme_aff_red1, lme_aff_red2, refit=FALSE)
 lme_aff_red3 = lmer(intensity~affricate*context+(1+context|subject)+(context|word), data=aff)
 anova(lme_aff_red1, lme_aff_red3, refit=FALSE)
 
-lme_aff_red4 = lmer(intensity~affricate*context+(1+context|subject)+(1|word), data=aff)
+lme_aff_red4 = lmer(intensity~affricate*context+(1+context+affricate|subject)+(1|word), data=aff)
 anova(lme_aff_red1, lme_aff_red4, refit=FALSE)
 
 # Singular fit, convergence problems and strategies
