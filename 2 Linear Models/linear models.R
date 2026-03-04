@@ -1,5 +1,7 @@
+library(tidyverse)
+
 # read in the CVC data
-CVC = read.csv("engCVC.csv")
+CVC = read.csv("2\ Linear\ Models/engCVC.csv")
 
 #remove rows with missing values
 CVC = filter(CVC, !is.na(F2C1))
@@ -17,7 +19,6 @@ CVC$speaker = factor(CVC$speaker)
 plot(F2C1~F2V, data=subset(CVC, C1=="b"), pch=as.numeric(CVC$speaker))
 
 # plot with ggplot2
-library(tidyverse)
 
 # scatter plot
 spb = ggplot(filter(CVC, C1=="b"), 
