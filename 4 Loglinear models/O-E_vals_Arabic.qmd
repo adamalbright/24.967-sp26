@@ -1,0 +1,502 @@
+---
+title: "Recreating Pierrehumbert (1993), Table 3"
+output: html_document
+date: "2026-03-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+# Calculating O/E values from the Arabic lexicon
+
+This file demonstrates how to calculate O/E values for consonant co-occurrences in the Arabic lexicon, following Pierrehumbert (1993) and Frisch, Pierrehumbert and Broe (2004).
+
+The first portion of the file simply reads in the lexicon and does some pre-processing to get the data ready for examining co-occurrences. Then it attempts to replicate a result in Pierrehumbert (1993), showing relative lack of co-occurrence restrictions with m/n pairs. Then, following Frisch et al. (2004), it examines co-occurrences more broadly, focusing on OCP restrictions.
+
+## Reading in some files (lexicon of roots and features of segments)
+
+### Reading in the roots list
+
+The first step is to read in the list of roots (lexicon) from Stefan Frisch. It is called "wehr" because the dictionary was originally compiled by Hans Wehr (published by a later editor, Cowan). The original file just has columns for C1, C2, and C3. It's useful to add a column with the entire root, to track down where consonant pairs come from later.
+
+```{r read in the Wehr roots list}
+wehr.raw = read_table("frisch_roots.txt", col_names=FALSE)
+names(wehr.raw) = c("C1","C2","C3")
+wehr.root = wehr.raw %>% mutate( root = paste(C1, C2, C3, sep="-"))
+# The following looks pointless now, but it will help keep track of things later. Label each row by the line number and root, so we know where the data comes from.
+wehr = wehr.root %>% mutate( entry = paste(row_number(), root, sep=" "))
+# Add row names for ease of reference
+row.names(wehr) = paste(row.names(wehr),wehr$root,sep=" ")
+
+wehr
+
+```
+
+### Reading in the feature values
+
+```{r read in feature values for Arabic segments}
+arabic_feats = read_table("ArabicFeatures.txt")
+row.names(arabic_feats) = arabic_feats$seg
+arabic_feats
+```
+
+### Finding adjacent consonant pairs
+
+Many of the analyses described are over pairs of adjacent CC's, regardless of whether they're in C1/C2 or C2/C3 position.
+
+The following takes columns C1 and C2 as one set of adjacent consonant pairs. The new "source" column isn't strictly necessary, but I just found it helpful to quickly identify which root contributed each observation, and where.
+
+```{r get C1/C2 adjacent pairs}
+wehr_C1C2 = wehr %>% select(C1,C2,root) %>% mutate(position="C1C2",source = paste("C1C2 ",root)) 
+wehr_C1C2
+```
+
+The following takes the C2 and C3 columns, which is an additional set of adjacent consonant pairs. In order to merge it with the C1/C2 pairs, let's call these C1/C2 as well, but we'll use "position" to remember that they're from a different position. So, C1 and C2 now mean "First C and second C in an adjacent pair" (NOT, first/second consonant of the root)
+
+```{r get C2/C3 adjacent pairs}
+wehr_C2C3 = wehr %>% select(C1=C2,C2=C3,root) %>% mutate(position="C2C3",source = paste("C2C3 ",root)) 
+wehr_C2C3
+```
+
+Now we can combine the C1/C2 and C2/C3 pairs into a combined list of adjacent C pairs. To reiterate: now C1="first C" and C2="second C" in this new list. The following code block does not bother trying to show what wehr_CC contains, because the first 10 rows are all from wehr_C1C2 anyway.
+
+```{r combining C1/C2 and C2/C3}
+# This is a bit inefficient, it would be better to just combine everything and then do analyses on subsets
+wehr_adjacent  = bind_rows(wehr_C1C2,wehr_C2C3) 
+
+```
+
+Table 3 in Pierrehumbert (1993) includes C1/C3 pairs, as well (collapsing adjacent and non-adjacent pairs)
+
+```{r adding C1/C3 pairs}
+wehr_C1C3 = wehr %>% select(C1=C1,C2=C3,root) %>% mutate(position="C1C3",source = paste("C2C3 ",root)) 
+
+# We also want to count pairs of non-adjacent root segments
+# This is a bit inefficient, it would be better to just combine everything and then do analyses on subsets
+wehr_nonadjacent = wehr %>% select(C1=C1,C2=C3,entry) %>% mutate(position="C1C3", source=paste("C1C3 ",entry)) %>% select(!entry)
+
+# And now the dataframe with all pairs together (adjacent and non-adjacent)
+wehr_CC  = bind_rows(wehr_adjacent,wehr_nonadjacent) 
+```
+
+## Recreating Pierrehumbert (1993), Table 3
+
+Now we move on to attempting to replicate part of Table \[3\] in Pierrehumbert (1993). In order to illustrate how this can be done, we start with an example that is not one of the rows in the table, but has a similar structure: co-occurrence of nasals (C1=m,n, C2=m,n). (Since Pierrehumbert is interested in OCP for features independent of place, she checks combinations that differ in place---that is, combinations of C1=n and C2=m or vice versa. In actuality, since n/n and m/m pairs are banned by the ban on identity, there shouldn't be many of those, anyway, but there might be some in C2/C3 position)
+
+First, we calculate the observed number of consonant pairs with C1=nas and C2=nas. We can check whether a given CC pair has C1 = nasal with the following, which takes wehr_CC and asks what the \[nasal\] specification is for C1, and then equivalently for C2. In both cases we use rename() and select() to pull out just the nasality values for C1 and C2, and then we combine both into a single tibble with bind_cols().
+
+As a sanity check, we then make sure this has picked out pairs with C1 and then C2 nasal, by inspecting the roots involved (with filter())
+
+```{r two nasals}
+wehr_C1nas = left_join(wehr_CC, select(arabic_feats,seg,nasal), join_by(C1==seg) ) %>% rename(C1nas = nasal) %>% select(C1nas)
+
+wehr_C2nas = left_join(wehr_CC,select(arabic_feats,seg,nasal),join_by(C2==seg)) %>% rename(C2nas = nasal) %>% select(C2nas)
+
+wehr_C1nas_C2nas = bind_cols(wehr_CC, wehr_C1nas, wehr_C2nas)
+
+# Examine the subsets where C1 is nasal or C2 is nasal
+wehr_C1nas_C2nas %>% filter(C1nas==1)
+wehr_C1nas_C2nas %>% filter(C2nas==1)
+```
+
+### Co-occurrence: observed count
+
+Now we can pull out the rows where both C1 and C2 are nasal (=co-occuring nasals).
+
+We start by extracting all of the rows where both C1 and C2 are nasal. This is the observed count of nas+nas.
+
+```{r observed nasal co-occurrence}
+# Get the number of rows where both C1 and C2 are nas
+observed_nas1nas2 = nrow(filter(wehr_C1nas_C2nas,C1nas==1 & C2nas==1) )
+
+# Print the number
+observed_nas1nas2
+```
+
+### Co-occurrence: expected count
+
+For the expected count, we need to know the probability that C1 is nasal, and the probability that C2 is nasal. Each of these is the count of nasals in the relevant position, divided by the total number of C's in that position (i.e., the total number of roots).
+
+For the counts of nasals, we simply sum how many lines in wehr_C1nas_C2nas have a nasal C1 (i.e., C1nas is 1) and how many lines have a nasal in C2 (C2nas is 1). We then use nrow() to get the total number of roots altogether.
+
+The probabilities of C1 nasal and C2 nasal are the count/total, for each position.
+
+The expected probability of both C1 nasal and C2 nasal is the joint probability of each independently---that is, the product of the two probabilities. The expected count is this probability times the total number of roots (i.e., given a lexicon of this size, and an expected proportion of nasal-nasal roots, how many should be nasal-nasal).
+
+```{r expected nasal co-occurrence}
+cat("C1: ",sum(wehr_C1nas_C2nas$C1nas),"\n")
+cat("C2: ",sum(wehr_C1nas_C2nas$C2nas),"\n")
+
+# The total count of roots altogether
+cat("Total: ",nrow(wehr_C1nas_C2nas),"\n")
+
+# P(C1==nas)
+C1nasprob = sum(wehr_C1nas_C2nas$C1nas) / nrow(wehr_C1nas_C2nas)
+cat("C1 nasal probability: ",C1nasprob,"\n")
+
+# P(C2==nas)
+C2nasprob = sum(wehr_C1nas_C2nas$C2nas) / nrow(wehr_C1nas_C2nas)
+cat("C2 nasal probability: ",C2nasprob,"\n")
+
+# Expected counts are the joint probability, times the size of the lexicon
+expected_nas1nas2 = (C1nasprob * C2nasprob) * nrow(wehr_C1nas_C2nas)
+cat("Expected nas-nas count: ",expected_nas1nas2,"\n")
+```
+
+### O/E for nasal/nasal combinations
+
+Finally, O/E is quite simply the observed count divided by the expected count.
+
+```{r calculating O/E}
+OE = observed_nas1nas2/expected_nas1nas2
+OE
+```
+
+### Testing significance of underattestation
+
+Does an O/E of 52/103.5 represent significant underattestation? The numbers are large enough that one would expect so, but what if it was 5/10.3?
+
+Pierrehumbert (1993) uses chi-squared tests, which are a way of comparing proportions (such as rates of occurrence) across two samples. (For example, is the rate of attestation for nasal-nasal sequences different from the rate of attestation for non-nasal-nasal sequences?) This comparison can be represented in a "contingency table". The following code creates a table comparing observed to expected counts for nas-nas combinations vs other combinations (the rest).
+
+```{r Chi squared}
+NN_OE = data.frame("Observed"=c(observed_nas1nas2,nrow(wehr)-observed_nas1nas2),"Expected"=c(expected_nas1nas2,nrow(wehr)-expected_nas1nas2), row.names=c("NN","Other"))
+NN_OE
+```
+
+Now we use this table to test the significance of the difference. Pierrehumbert uses a chi squared test. The chi squared test assumes that the expected values for each cell in the table are 5 or greater. This is checked by examining the the \$expected variable of the test below (it easily meets the assumption in this case).
+
+A more flexible test that makes fewer assumptions than the chi-squared test, and which might be a better default, is the Fisher's Exact test, which can be performed on a contingency table of the same shape.
+
+```{r chi-sq}
+chisq.test(NN_OE)
+chisq.test(NN_OE)$expected
+
+fisher.test(NN_OE)
+```
+
+## Frisch, Pierrehumbert and Broe (2004)
+
+This analysis examines pairs of consonants (and classes) more generally. We start by attempting to replicate Table 1 of Frisch, Pierrehumbert, and Broe (2004).
+
+### An initial example with specific combinations of consonants
+
+We start with an example from the text, about specific pairs of consonants: /d,t,C/ (O/E=0) vs. /d,s,C/ (O/E=.69) vs. /d,g,C/ (O/E=1.21). In order to do this, it's convenient to write a function that takes segments (or lists of segments) and returns the O/E value.
+
+```{r}
+oe_arabic = function(C1="all", C2="all", C3="all") {
+  # The Observed count is the number of rows in 'wehr', where C1=C1, C2=C2, and C3=C3.
+  
+  # This is a bit slow/inefficient, but we can handle the "all" cases by just having a list of all of the segments that occur in any position. It would be faster to not do any filtering at all if we want "all" for a given position, but the logic of the calculations is more transparent if we just treat "all" as a list of all the segments. So, get a list of all of the segments that occur in any position
+  all_segs = unique(c(wehr$C1, wehr$C2, wehr$C3))
+
+  C1_list = as.vector(C1)
+  C2_list = as.vector(C2)
+  C3_list = as.vector(C3)
+  
+  # Now replace "all" with the list of all segs
+  if ("all" %in% C1_list) {
+    C1_list = all_segs
+  }
+
+  if ("all" %in% C2_list) {
+    C2_list = all_segs
+  }
+  
+  if ("all" %in% C3_list) {
+    C3_list = all_segs
+  }
+
+  # To find O/E, we first calculate observed.
+  observed = nrow( wehr |> 
+      filter( C1 %in% C1_list ) |>
+      filter( C2 %in% C2_list ) |>
+      filter( C3 %in% C3_list ) )
+  
+  # Now calculate expected. This begins with the probability of each C in its respective position
+  C1_count = nrow(wehr |> filter( C1 %in% C1_list ) )
+  C1_prob = C1_count / nrow(wehr)
+  C2_count = nrow(wehr |> filter( C2 %in% C2_list ) )
+  C2_prob = C2_count / nrow(wehr)
+  C3_count = nrow(wehr |> filter( C3 %in% C3_list ) ) 
+  C3_prob = C3_count / nrow(wehr)
+  
+  expected = C1_prob * C2_prob * C3_prob * nrow(wehr)
+
+  
+  C1_string = paste(C1_list,sep=",")
+  C2_string = paste(C2_list,sep=",")
+  C3_string = paste(C3_list,sep=",")
+
+  cat("O/E for C1=[",C1_string,"], C2=[",C2_string,"], C3=[",C3_string,"]\n",sep="")
+  cat("\tC1 count: ",C1_count," (prob = ",round(C1_prob,4),")\n",sep="")
+  cat("\tC2 count: ",C2_count," (prob = ",round(C2_prob,4),")\n",sep="")
+  cat("\tC3 count: ",C3_count," (prob = ",round(C3_prob,4),")\n",sep="")
+  cat("\tObserved: ",observed,"\n",sep="")
+  cat("\tExpected: ",expected,"\n",sep="")
+  cat("\tO/E = ",round(observed/expected,4),"\n",sep="")
+  
+}
+```
+
+We can now use this to calculate the three examples from Frisch et al, p. 185
+
+```{r}
+oe_arabic(C1="d",C2="t")
+oe_arabic(C1="d",C2="s")
+oe_arabic(C1="d",C2="g")
+```
+
+### Moving on to classes of segments
+
+In order to calculate O/E for classes, we need to know which segments belong to the same major place class. Let's make a new version of the features table, which just contains the major class features.
+
+```{r Making a features file for major class features}
+# For current purposes, we care about the "classes" as defined with the arabic_feats file, but not the individual features themselves. Also, to keep things readable, let's rename the classes something a little shorter
+arabic_feats.class = arabic_feats %>% 
+  select(1:11,place) %>% 
+  rename(lab=class.labials, corobst=class.coronalobstruents, corstop=class.coronalobsstops,corfric=class.coronalobsfrics, corson=class.coronalsonorants, dors=class.dorsalobstruents, gutturalapprox=class.gutturalapproximants, glottal=class.gutturalglottal)
+
+```
+
+```{r}
+# Now get the class information for C1 and C2, using left_join() to take the consonants in "wehr_adjacent" (left side) and get their featural information in "arabic_feats" (right side).
+# Also, there's one superclass that we won't use, so drop it
+wehr_adjacent_C1class.all = left_join(wehr_adjacent,arabic_feats.class,join_by(C1==seg)) %>% select(!class.guttural) 
+# We actually only want to keep the class information. It would have been more efficient to run the above through select() to drop the columns from wehr_adjacent, but doing it in two steps let us double-check that the join did what we expected.
+wehr_adjacent_C1class = wehr_adjacent_C1class.all |> select(7:14)
+
+# Now for the C2 class
+wehr_adjacent_C2class.all = left_join(wehr_adjacent,arabic_feats.class,join_by(C2==seg)) %>% select(!class.guttural)
+wehr_adjacent_C2class = wehr_adjacent_C2class.all |> select(7:14)
+```
+
+Examine some sets of cooccurrences, just to be sure we're getting what we expect
+
+```{r}
+# Two labials
+wehr_adjacent_lab.lab = bind_cols(wehr_adjacent,lab.lab=wehr_adjacent_C1class$lab * wehr_adjacent_C2class$lab)
+sum(wehr_adjacent_lab.lab$lab.lab)
+filter(wehr_adjacent_lab.lab,lab.lab==1)
+
+# A labial C1 and coronal stop C2
+wehr_adjacent_lab.corstop = bind_cols(wehr_adjacent, lab.corstop=wehr_adjacent_C1class$lab * wehr_adjacent_C2class$corstop)
+sum(wehr_adjacent_lab.corstop$lab.corstop)
+filter(wehr_adjacent_lab.corstop,lab.corstop==1)
+
+# Two coronal stops
+wehr_adjacent_corstop.corstop = bind_cols(wehr_adjacent, corstop.corstop=wehr_adjacent_C1class$corstop * wehr_adjacent_C2class$corstop)
+sum(wehr_adjacent_corstop.corstop$corstop.corstop)
+filter(wehr_adjacent_corstop.corstop,corstop.corstop==1)
+
+#  A coronal stop C1 and coronal fricative C2 
+wehr_adjacent_corstop.corfric = bind_cols(wehr_adjacent, corstop.corfric=wehr_adjacent_C1class$corstop * wehr_adjacent_C2class$corfric)
+sum(wehr_adjacent_corstop.corfric$corstop.corfric)
+filter(wehr_adjacent_corstop.corfric,corstop.corfric==1)
+
+```
+
+Now for a matrix of observed counts in the lexicon
+
+```{r Observed counts for major place classes}
+wehr_adjacent.observed = matrix(nrow=length(names(wehr_adjacent_C1class)),ncol=length(names(wehr_adjacent_C1class)),dimnames=list(C1=names(wehr_adjacent_C1class),C2=names(wehr_adjacent_C2class)))
+
+#wehr_adjacent.observed[1,] = names(wehr_adjacent_C1class)
+#wehr_adjacent.observed[,1] = names(wehr_adjacent_C1class)
+#wehr_adjacent.observed[1,1] = ""
+
+for (row in 1:length(names(wehr_adjacent_C1class))) {
+  for (col in 1:length(names(wehr_adjacent_C1class))) {
+    cooccur = sum(wehr_adjacent_C1class[,row]*wehr_adjacent_C2class[,col])		
+    wehr_adjacent.observed[row,col] = cooccur
+  }
+}
+wehr_adjacent.observed 
+```
+
+Now for the expected counts
+
+```{r Expected counts for major place classes}
+# We first compute the probability of each class in each position (=marginal probabilities)
+wehr_adjacent_Clclass.marginal = colSums(wehr_adjacent_C1class) / sum(wehr_adjacent_C1class)
+wehr_adjacent_C2class.marginal = colSums(wehr_adjacent_C2class) / sum(wehr_adjacent_C2class)
+
+# Now we multiply these to get the joint probabilities
+wehr_adjacent.jointprob = matrix(nrow=length(names(wehr_adjacent_C1class)),ncol=length(names(wehr_adjacent_C1class)),dimnames=list(C1=names(wehr_adjacent_C1class),C2=names(wehr_adjacent_C2class)))
+for (row in 1:length(names(wehr_adjacent_C1class))) {
+  for (col in 1:length(names(wehr_adjacent_C1class))) {
+    jointprob = wehr_adjacent_Clclass.marginal[row] * wehr_adjacent_C2class.marginal[col]
+    wehr_adjacent.jointprob[row,col] = jointprob
+  }
+}
+
+# The expected value is joint prob times the size of the lexicon
+# wehr_adjacent.expected = wehr_adjacent.jointprob * nrow(wehr_adjacent)
+# To match the FBP table, I seem to have to multiple joint prob times the number of pairs involving just these segments
+wehr_adjacent.expected = wehr_adjacent.jointprob * sum(wehr_adjacent.observed)
+```
+
+Now, finally, the O/E values, which is as simple as dividing.
+
+```{r}
+# Calculate O/E
+round(wehr_adjacent.observed / wehr_adjacent.expected,2)
+```
+
+One could also imagine doing this in order-independent fashion
+
+```{r}
+# Now order-independent 
+wehr_adjacent.unordered.observed = matrix(nrow=length(names(wehr_adjacent_C1class)),ncol=length(names(wehr_adjacent_C1class)),dimnames=list(C1=names(wehr_adjacent_C1class),C2=names(wehr_adjacent_C2class)))
+for (row in 1:length(names(wehr_adjacent_C1class))) {
+  for (col in 1:length(names(wehr_adjacent_C1class))) {
+    cooccur = sum(wehr_adjacent_C1class[,row]*wehr_adjacent_C2class[,col]) + sum(wehr_adjacent_C1class[,col]*wehr_adjacent_C2class[,row])		
+    wehr_adjacent.unordered.observed[row,col] = cooccur
+  }
+}
+wehr_adjacent.unordered.observed 
+
+# Now, once again, we get the expected counts
+wehr_adjacent_Clclass.marginal = colSums(wehr_adjacent_C1class) / sum(wehr_adjacent_C1class)
+wehr_adjacent_C2class.marginal = colSums(wehr_adjacent_C2class) / sum(wehr_adjacent_C2class)
+
+wehr_adjacent.unordered.jointprob = matrix(nrow=length(names(wehr_adjacent_C1class)),ncol=length(names(wehr_adjacent_C1class)),dimnames=list(C1=names(wehr_adjacent_C1class),C2=names(wehr_adjacent_C2class)))
+for (row in 1:length(names(wehr_adjacent_C1class))) {
+  for (col in 1:length(names(wehr_adjacent_C1class))) {
+    jointprob = wehr_adjacent_Clclass.marginal[row] * wehr_adjacent_C2class.marginal[col] + wehr_adjacent_Clclass.marginal[col] * wehr_adjacent_C2class.marginal[row]
+    wehr_adjacent.unordered.jointprob[row,col] = jointprob
+  }
+}
+# The expected values, once again, are the joint prob times the size of the lexicon
+# wehr_adjacent.expected = wehr_adjacent.jointprob * nrow(wehr_adjacent)
+# To match the FBP table, I seem to have to multiple joint prob times the number of pairs involving just these segments
+wehr_adjacent.unordered.expected = wehr_adjacent.unordered.jointprob * sum(wehr_adjacent.unordered.observed) / 2
+round(wehr_adjacent.unordered.observed / wehr_adjacent.unordered.expected,2)
+
+```
+
+## The relation between O/E and similarity
+
+FPB 2004, p. 204: "To assess the extent to which the natural classes similarity model can capture the trends in the OCP-Place data, it was used to fit a simple decreasing function to the rate of occurrence in the lexicon of all consonant pairs. The model was fit separately to the adjacent and non-adjacent consonant pairs in the triliteral roots. There was one data point for each pair of consonants in first and second, second and third, or first and third position in the root. This is an ordered pair (x, y), where x is the similarity of the consonants in the pair and y is O/E for that pair."
+
+This is stated over specific segments. So, we need to calculate O/E and sim values for each pair.
+
+In actuality, we have this data from the file "`frisch_original.xls`", so let's just use those. I've put them into text files: observed counts are in `FPB-segpairs.adjacent.txt`, `FPB-segpairs.nonadjacent.txt`. The similarity values are in `FPB-segpairs.sims.txt`
+
+### Reading in the files
+
+```{r}
+# Reading in the files
+fpb_adjacent = read.table("FPB-segpairs.adjacent.txt",header=TRUE)
+# One of the columns is labeled '?' for glottal stop, but R doesn't like this. Rename it. We'll need to rename it in other things that use ? for ʔ, too
+names(fpb_adjacent)[24] = "ʔ"
+# For consistency, rename it in the rows, too
+names(fpb_adjacent)[1] = "C1"
+fpb_adjacent$C1 = replace(fpb_adjacent$C1, fpb_adjacent$C1=="?", "ʔ")
+
+# The first column is just the C1 seg. For consistency, rename 
+row.names(fpb_adjacent) = fpb_adjacent$C1
+fpb_adjacent$C1 = NULL
+
+fpb_sims = read.table("FPB-segpairs.sims.txt",header=TRUE)
+# The list of segs is the list of row or column names from any of these files; let's take column names from the similarity table
+arabic_segs = row.names(fpb_sims)
+# Replace ? with ʔ
+arabic_segs = replace(arabic_segs, arabic_segs=="?", "ʔ")
+
+# The set of pairs is arabic_segs*arabic_segs
+fpb_adjacent.long = expand.grid(arabic_segs,arabic_segs,stringsAsFactors=FALSE)
+names(fpb_adjacent.long) = c("C1","C2")
+
+```
+
+### Recalculating O/E for pairs of segments
+
+Now we redo O/E counts, but over individual pairs of segments. The following code does something which some find to be bad practice, of modifying an object (fpb_adjacent.long) and continuing to add new columns to it. One could be less destructive by always naming the result.
+
+```{r}
+# The observed counts are just the counts in the table fpb_adjacent
+fpb_adjacent.long$O = as.vector(data.matrix(fpb_adjacent))
+
+# The expected counts come from the probabilities of C1 and C2 in those positions, respectively.  Those probabilities come from the marginal sums of the rows/columns in fpb_adjacent
+# For convenience, let's make little lists which contain just the probability of each individual C, in each position
+fpb_adjacent.C1prob = rowSums(fpb_adjacent)/sum(rowSums(fpb_adjacent))
+
+fpb_adjacent.C2prob = colSums(fpb_adjacent)/sum(colSums(fpb_adjacent))
+
+# Also to get E, we'll need the total size of the corpus
+N = sum(rowSums(fpb_adjacent))  # (or, sum(colSums(fpb_adjacent)))
+
+# Now our long list of C1/C2 pairs can be augmented by E values. For inspection/transparency, let's include columns for the C1 probability and the C2 probability, and then we'll multiply those (and scale by N) to get E
+fpb_adjacent.long$C1prob = fpb_adjacent.C1prob[fpb_adjacent.long$C1]
+
+fpb_adjacent.long$C2prob = fpb_adjacent.C2prob[fpb_adjacent.long$C2]
+
+fpb_adjacent.long$E = fpb_adjacent.long$C1prob * fpb_adjacent.long$C2prob * N
+
+```
+
+We can examine the relation between O and E.
+
+```{r}
+# We can inspect the relation between O and E
+oe_plot = ggplot( fpb_adjacent.long, aes( x=E, y=O) ) + geom_point()
+oe_plot + theme_minimal() + labs(title="O vs. E for adjacent consonant pairs", y="Observed", x="Expected")
+
+```
+
+Now calculate O/E
+
+```{r}
+# Now we calculate O/E
+fpb_adjacent.long$OE = fpb_adjacent.long$O / fpb_adjacent.long$E
+
+```
+
+### How well does similarity predict O/E?
+
+Make an equivalent list of similarity
+
+```{r}
+fpb_adjacent.long$sim = as.vector(data.matrix(fpb_sims))
+
+```
+
+Plot the relation between O/E and similarity
+
+```{r}
+oe_sim_plot = ggplot( fpb_adjacent.long, aes(x=sim, y=OE)) + geom_point()
+oe_sim_plot + theme_minimal() + labs(title="O/E predicted by similarity", y="O/E", x="Similarity")
+
+```
+
+Frisch, Broe and Pierrehumbert (2004) "bin" the pairs into groups. They use an elaborate procedure to set threshholds, but perhaps something similar could be seen by simply binning similarity, as they do in Table IV
+
+```{r}
+breaks = c(0,.1,.2,.3,.4,.5,.6,.8,1)
+binned <- aggregate(fpb_adjacent.long$OE, FUN=mean,
+                by=list(sim=cut(fpb_adjacent.long$sim, breaks, include.lowest=T)))
+binned = rename(binned,OE=x)
+str(binned)
+
+oe_sim_plot_binned = ggplot(binned, aes(x=sim,y=OE)) + geom_point() 
+oe_sim_plot_binned+ theme_minimal() + labs(title="O/E predicted by similarity", y="O/E", x="Similarity") 
+
+
+
+
+```
+
+Frisch et al fit a monotonic decreasing function. Let's use the package MonoPoly
+
+```{r}
+library(MonoPoly)
+oe.monpol = monpol(OE ~ sim, data=fpb_adjacent.long)
+simvals = seq(0,1,.1)
+predicted = predict(oe.monpol,newdata=data.frame(sim=simvals))
+data = bind_cols(simvals,predicted)
+
+oe_modeled_sim = ggplot(data, aes(x=simvals,y=predicted)) + geom_point() 
+oe_modeled_sim + theme_minimal() + labs(title="O/E predicted by similarity", y="O/E", x="Similarity") 
+```

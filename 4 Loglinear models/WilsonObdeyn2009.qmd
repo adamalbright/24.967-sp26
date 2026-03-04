@@ -1,0 +1,120 @@
+---
+title: "Wilson and Obdeyn (2009)"
+output: html_document
+date: "2026-03-04"
+---
+
+# Wilson and Obdeyn's schematic example
+
+The purpose of this example is to show that if you generate observed counts using marginal probabilities and a cooccurrence restriction, calculating O/E does not recover the true probability.
+
+First we construct the table of generating probabilities
+
+```{r}
+# Construct the table of generating probabilities
+segs = c("p","t","k")
+freqs = c(1/3,1/2,1/6)
+wilsonobdeyn2008 = data.frame(cbind(expand.grid(segs,segs,stringsAsFactors=TRUE),
+expand.grid(freqs,freqs)))
+names(wilsonobdeyn2008) = c("C1","C2","C1.prob","C2.prob")
+wilsonobdeyn2008$CC.prob = c(.5,1,1,1,.5,1,1,1,.5)
+wilsonobdeyn2008$gen.prob = with(wilsonobdeyn2008, C1.prob*C2.prob*CC.prob)
+
+```
+
+Now normalize to get the probability of each cell
+
+```{r}
+wilsonobdeyn2008$gen.prob = wilsonobdeyn2008$gen.prob/sum(wilsonobdeyn2008$gen.prob)
+```
+
+Calculate the expected counts, for a sample of 5000 words
+
+```{r}
+# Expected counts (frequencies) in sample of 5000
+wilsonobdeyn2008$Freq = round(wilsonobdeyn2008$gen.prob*5000)
+
+```
+
+Now we are ready to see the O/E problem that Wilson and Obdeyn point out.
+
+Using the table of expected counts that we just generated, we calculate the actual probabilities of each segment
+
+```{r}
+wilsonobdeyn2008.obsfreq = matrix(wilsonobdeyn2008$Freq,nrow=3)
+wilsonobdeyn2008.obsprob.C1 = data.frame(prob=rowSums(wilsonobdeyn2008.obsfreq)/sum(wilsonobdeyn2008.obsfreq),row.names=c("p","t","k"))
+wilsonobdeyn2008.obsprob.C2 = data.frame(prob=colSums(wilsonobdeyn2008.obsfreq)/sum(wilsonobdeyn2008.obsfreq),row.names=c("p","t","k"))
+
+wilsonobdeyn2008$C1.obsprob = wilsonobdeyn2008.obsprob.C1[wilsonobdeyn2008$C1,"prob"]
+wilsonobdeyn2008$C2.obsprob = wilsonobdeyn2008.obsprob.C2[wilsonobdeyn2008$C2,"prob"]
+
+```
+
+Now calculate O/E. Not only does this not yield 1's and .5's, but it actually yields different degrees of underattested by place (.58, .72, .48), making it look like a subsidiary feature is active.
+
+```{r}
+wilsonobdeyn2008$OE = wilsonobdeyn2008$Freq / (wilsonobdeyn2008$C1.obsprob*wilsonobdeyn2008$C2.obsprob*5000)
+round(wilsonobdeyn2008$OE,2)
+
+```
+
+# Using loglinear models instead
+
+We create columns for factors to test for different degrees of restriction. The "baseline" is a general OCP place effect, but we are interested in seeing whether we get a better fit by allowing the model to specifically differentiate OCP labial or OCP dorsal.
+
+```{r}
+wilsonobdeyn2008$OCP_Place = c(1,0,0,0,1,0,0,0,1)
+wilsonobdeyn2008$OCP_Lab = c(1,0,0,0,0,0,0,0,0)
+wilsonobdeyn2008$OCP_Cor = c(0,0,0,0,1,0,0,0,0)
+wilsonobdeyn2008$OCP_Dors = c(0,0,0,0,0,0,0,0,1)
+
+```
+
+Now we set up the contrasts so we can model the counts with a loglinear (poisson) model.
+
+```{r}
+str(wilsonobdeyn2008$C1)
+contrasts(wilsonobdeyn2008$C1)
+
+```
+
+A simple model, just to show the syntax/shape of what we want to construct
+
+```{r}
+wilsonobdeyn2008.simplemodel = glm(Freq ~ C1+C2, family=poisson(link="log"),data=wilsonobdeyn2008)
+summary(wilsonobdeyn2008.simplemodel)
+
+```
+
+Now a model that incorporates just OCP place, to compare with one that also includes specific OCP constraints. For 3 places, we can test for 2 effects; here, I've arbitrarilychosen Lab and Cor
+
+```{r}
+wilsonobdeyn2008.genonly = glm(Freq ~ C1 + C2 + OCP_Place, data=wilsonobdeyn2008,family=poisson(link="log"))
+wilsonobdeyn2008.genandspec = glm(Freq ~ C1 + C2 + OCP_Place + OCP_Lab + OCP_Cor, data=wilsonobdeyn2008,family=poisson())
+
+anova(wilsonobdeyn2008.genonly,wilsonobdeyn2008.genandspec,test="Chisq")
+
+```
+
+Interpreting the coefficients for the C1 frequencies.
+
+```{r}
+# This is maybe easier with dummy coding
+contrasts(wilsonobdeyn2008$C1) = contr.treatment(levels(wilsonobdeyn2008$C1))
+contrasts(wilsonobdeyn2008$C2) = contr.treatment(levels(wilsonobdeyn2008$C2))
+
+wilsonobdeyn2008.OCPgen = glm(Freq ~ C1 + C2 + OCP_Place, data=wilsonobdeyn2008,family=poisson())
+summary(wilsonobdeyn2008.OCPgen)
+
+# t vs. p: 1.5 times more frequent
+exp(0.40515)
+# k vs. p: 1/2 as frequent
+exp(-0.69335)
+
+wilsonobdeyn2008.OCPspec = glm(Freq ~ C1 + C2 + OCP_Place + OCP_Lab + OCP_Cor, data=wilsonobdeyn2008,family=poisson())
+summary(wilsonobdeyn2008.OCPspec)
+
+anova(wilsonobdeyn2008.OCPgen,wilsonobdeyn2008.OCPspec,test="Chisq")
+
+
+```
