@@ -1,0 +1,384 @@
+---
+title: "Loglinear models for Arabic cooccurrence restrictions"
+format: html
+editor: visual
+date: "2026-03-11"
+---
+
+```{r}
+library(tidyverse)
+```
+
+## Testing for cooccurrence restrictions using loglinear (Poisson) models
+
+The basic hypothesis is of the form: combinations of consonants that violate a phonotactic restriction are less frequent than combinations of consonants that don't violate the restriction. Specifically for Arabic, some of the hypotheses on the table include:
+
+-   All else being equal, combinations of consonants that violate OCP(place) (i.e., homorganic pairs) are less frequent than combinations of consonants that don't violate OCP(place) (i.e., heterorganic pairs)
+
+-   All else being equal, combinations of consonants that violate OCP(lab) and OCP(dors) are less frequent than combinations of consonants that violate OCP(cor)
+
+-   All else being equal, combinations of consonants that violate OCP(cor) and share the same value for \[±sonorant\] are less frequent than combinations of consonants that violate OCP(cor) and differ in sonority
+
+All of these are stated in terms of a categorical predictor, in terms that are now familiar for linear models. The general prediction (higher and lower values) is also familiar, but slightly different from other linear models that we've seen, since in this case, frequency is is a non-negative integer. The other challenge, as usual, is to interpret and implement "all else being equal".
+
+First, we grapple with a response that is counts, rather than a numerical value. Counts are positive integers, and there's no reason to think they are normally distributed. So, modeling them as continuous values from -inf to inf is inappropriate.
+
+Generalized linear models
+
+-   transform the response into a value that ranges from -inf to inf
+
+-   fits the effects of predictors using a "linking function" that is designed to reflect the expected distribution of values along that range.
+
+For modeling a response that is restricted to positive values, there is an obvious transformation to values -inf to inf: take the log of the count. Poisson models therefore model the log of the count, rather than the count directly. (Hence, "loglinear" models.)
+
+For the expected distribution, it is assumed that the counts will follow a Poisson distribution (see class slides).
+
+## A toy model of Arabic counts (to be revised)
+
+Coetzee and Pater (2008) propose to use Poisson (loglinear) models to analyze O/E values, in the following way: (NB we will reject this approach quickly, but I am introducing it just to see how loglinear models work)
+
+-   As a baseline, observed values should be well predicted by expected values: log(O) \~ log(E)
+
+-   By adding additional factors corresponding to phonological constraints, we can test whether pairs of consonants that violate a particular constraint are systematically under- (or over-)represented. The way that Coetzee and Pater actually apply this is on p. 304 (example (5)) of their paper. For purposes of illustration, we sketch a simpler application of the approach.
+
+We could imagine testing for OCP(place) effects with the model:
+
+-   log(O) \~ log(E) + OCP_Place
+
+Poisson model: interpreting the model
+
+Read in the files
+
+```{r}
+# Read in the Frisch, Pierrehumbert and Broe O and E values from last time
+fpb_adjacent.long = read_tsv("FPB-segpairs.adjacent.oe.txt")
+
+arabic_feats = read_table("ArabicFeatures.txt")
+row.names(arabic_feats) = arabic_feats$seg
+# For consistency, replace '?' with "ʔ"
+arabic_feats$seg = replace(arabic_feats$seg, arabic_feats$seg=="?", "ʔ")
+
+arabic_feats.class = arabic_feats %>% 
+  select(1:11,place) %>% 
+  rename(lab=class.labials, corobst=class.coronalobstruents, corstop=class.coronalobsstops,corfric=class.coronalobsfrics, corson=class.coronalsonorants, dors=class.dorsalobstruents, gutturalapprox=class.gutturalapproximants, glottal=class.gutturalglottal)
+
+```
+
+Merge the feature information into the list of adjacent C's
+
+```{r}
+wehr_adjacent_C1class = left_join(fpb_adjacent.long,arabic_feats.class,join_by(C1==seg)) %>% select(!class.guttural) |> select(7:15)
+
+wehr_adjacent_C2class = left_join(fpb_adjacent.long,arabic_feats.class,join_by(C2==seg)) %>% select(!class.guttural) |> select(7:15)
+
+```
+
+Make OCP columns
+
+```{r}
+wehr_adjacent_OCP_lab = bind_cols(fpb_adjacent.long,OCP_lab=wehr_adjacent_C1class$lab * wehr_adjacent_C2class$lab)
+
+wehr_adjacent_OCP_cor = bind_cols(fpb_adjacent.long,OCP_cor=(wehr_adjacent_C1class$corson+wehr_adjacent_C1class$corobst) * (wehr_adjacent_C2class$corson+wehr_adjacent_C2class$corobst))
+
+wehr_adjacent_OCP_dors = bind_cols(fpb_adjacent.long,OCP_dors=wehr_adjacent_C1class$dors * wehr_adjacent_C2class$dors)
+
+wehr_adjacent_OCP_place = bind_cols(fpb_adjacent.long,OCP_place=wehr_adjacent_OCP_lab$OCP_lab+wehr_adjacent_OCP_cor$OCP_cor+wehr_adjacent_OCP_dors$OCP_dors)
+```
+
+Now integrate these columns into a data frame for modeling
+
+```{r}
+fpb_adjacent.data = bind_cols(fpb_adjacent.long, OCP_place=wehr_adjacent_OCP_place$OCP_place, OCP_lab=wehr_adjacent_OCP_lab$OCP_lab, OCP_cor=wehr_adjacent_OCP_cor$OCP_cor, OCP_dors=wehr_adjacent_OCP_dors$OCP_dors)
+
+```
+
+The loglinear model (again, we're about to reject this approach)
+
+```{r}
+fpb_adjacent.ocp_place.glm = glm(O ~ log(E) + OCP_place, family=poisson(), data=fpb_adjacent.data)
+
+summary(fpb_adjacent.ocp_place.glm)
+```
+
+But this is a bad model of expected values! Wilson and Obdeyn (2008)
+
+A better model of expected values
+
+```{r}
+fpb_adjacent.ocp_place.glm2 = glm(O ~ C1 + C2 + OCP_place, family=poisson(), data=fpb_adjacent.data)
+
+summary(fpb_adjacent.ocp_place.glm2)
+```
+
+## Some more complete models
+
+## Reading in the feature chart
+
+We start by reading in the feature chart from the file ArabicFeatures.txt.
+
+```{r}
+arabic_feats = read_table("ArabicFeatures.txt")
+# The following is deprecated, figure out a different approach that doesn't use row.names
+#row.names(arabic_feats) = arabic_feats$seg
+arabic_feats
+```
+
+## Getting the data
+
+The data about attested consonant pairs is found in the file "frisch_original.xls". I've put them into separate text files: observed counts are in FPB-segpairs.adjacent.txt, FPB-segpairs.nonadjacent.txt.
+
+```{r}
+fpb_adjacent = read_table("FPB-segpairs.adjacent.txt")
+# One of the columns is labeled '?' for glottal stop, but R doesn't like this. Rename it. We'll convert it back in the data later, since other files assume ? 
+names(fpb_adjacent)[24] = "ʔ"
+
+# The first column is just the C1 seg. 
+names(fpb_adjacent)[1] = "C1"
+
+fpb_adjacent 
+```
+
+We also have data about nonadjacent pairs, so we might as well read it in. Wilson and Obdeyn do not include non-adjacent pairs in their analysis, however.
+
+```{r}
+fpb_nonadjacent = read_table("FPB-segpairs.nonadjacent.txt")
+# One of the columns is labeled '?' for glottal stop, but R doesn't like this. Rename it. We'll convert it back in the data later, since other files assume ? 
+names(fpb_nonadjacent)[24] = "ʔ"
+
+# The first column is just the C1 seg. 
+names(fpb_nonadjacent)[1] = "C1"
+
+fpb_nonadjacent 
+```
+
+## Getting the similarity values
+
+We also eventually need the similarity values, which are found in FPB-segpairs.sims.txt. These are calculated using the procedure proposed by Frisch, Pierrehumbert, and Broe (2004).
+
+```{r}
+# read_table treats any number of consecutive whitespaces as a single separator, and I can't find any way to turn this off.  The file FPB-segpairs.sims.txt has an empty column name in the first column, and this throws off read_table. Of course, we could just edit the text file to fix this, but in the interest of showing how to deal with this kind of problem, instead let's use read.table
+
+# Also, read.table() by default will assign the extra column as row names, which is sensible, but tibble doesn't really use row names any more, so we'll just make it a variable
+fpb_sims = tibble(read.table("FPB-segpairs.sims.txt", header=TRUE, row.names=NULL)) %>% rename(C1 = row.names)
+fpb_sims
+
+# The list of segs is the list of row or column names from any of these files; let's take column names from the similarity table
+arabic_segs = fpb_sims$C1
+arabic_segs
+```
+
+## Preparing the file of counts for log-linear regression
+
+Now we have the list of all consonants, so we can make a list of all possible consonant pairs, and get their observed counts. Following Wilson and Obdeyn, we'll just do this for the adjacent pairs for now.
+
+```{r}
+# The set of pairs is arabic_segs*arabic_segs
+fpb_adjacent.long = expand.grid(arabic_segs,arabic_segs,stringsAsFactors=FALSE)
+names(fpb_adjacent.long) = c("C1","C2")
+#row.names(fpb_adjacent.long) = paste(fpb_adjacent.long$C1,fpb_adjacent.long$C2,sep=" ")
+
+# The observed counts are just the counts in the table fpb_adjacent
+fpb_adjacent.long$count = as.vector(data.matrix(fpb_adjacent %>% select(-C1)))
+fpb_adjacent.long
+```
+
+# Predictors
+
+There are various predictors to consider, including plain OCP(place), OCP(place) modulated by similarity, OCP(place) modulated by subsidiary features, etc. We start by getting the place and sonority values for C1 and C2, from the arabic_feats table. Then, we assess OCP(place) violations by finding those rows where both C's have the same place (in general, or for a specific place).
+
+```{r}
+
+# Get the features for C1
+fpb_adjacent.long = left_join(fpb_adjacent.long, select(arabic_feats, seg, place, sonorant), join_by(C1==seg)) %>% rename(C1place=place) %>% rename(C1son=sonorant) 
+
+# Get the features for C2
+fpb_adjacent.long = left_join(fpb_adjacent.long, select(arabic_feats, seg, place, sonorant), join_by(C2==seg)) %>% rename(C2place=place) %>% rename(C2son=sonorant) 
+
+# A pair has a general OCP_place violation if C1_place and C2_place are the same. We can make an indicator variable, let's make the default 0 and then change it to 1 if they match
+fpb_adjacent.long = mutate(fpb_adjacent.long, match_place = if_else(C1place==C2place,1,0))
+
+
+# Now, do the same for specific places
+fpb_adjacent.long = mutate(fpb_adjacent.long, match_lab = if_else(C1place=="lab" & C2place=="lab",1,0))
+
+fpb_adjacent.long = mutate(fpb_adjacent.long, match_cor = if_else(C1place=="cor" & C2place=="cor",1,0))
+
+fpb_adjacent.long = mutate(fpb_adjacent.long, match_dors = if_else(C1place=="dors" & C2place=="dors",1,0))
+
+fpb_adjacent.long = mutate(fpb_adjacent.long, match_guttural = if_else(C1place=="guttural" & C2place=="guttural",1,0))
+
+fpb_adjacent.long = mutate(fpb_adjacent.long, match_son = if_else(C1son==C2son,1,0))
+
+
+```
+
+# Exercise
+
+How would you also get the place values for C1 and C2?
+
+# Similarity values
+
+Frisch, Pierrehumbert and Broe (2004) argue that one of the predictors of C1/C2 counts is the similarity of C1 and C2. Specifically, they argue that OCP(place) violations are modulated by C1/C2 similarity.
+
+We have the the similarity values from Stefan Frisch. In theory, similarity is only relevant when two consonants have the same place (i.e., OCP place violations are modulated by similarity). This similarity file largely has values of 0 for pairs that don't agree in place, but there are some similarity values for non-agreeing pairs, for some reason. We'll deal with those later.
+
+```{r}
+# The similarity values come from the table.  We've set things up so that the order is the same, so we can just put the similarity table into a vector and add it as a column.
+fpb_adjacent.long$sim = as.vector(data.matrix(fpb_sims %>% select(-C1)))
+
+
+# Exclude pairs that include glides w,y
+fpb_adjacent.long = filter(fpb_adjacent.long, !C1 %in% c("w","y") & !C2 %in% c("w","y")) 
+
+# This leaves 4115 pairs, which is very close to the 4119 that Wilson and Obdeyn report
+sum(fpb_adjacent.long$count)
+```
+
+# Modeling counts
+
+Wilson and Obdeyn compare a variety of models, embodying different theories of why OCP violations differ from each other (the similarity model, subsidiary features, a simpler version of feature similarity, etc.). However, a natural first question, given their demonstration that O/E values can give the appearance of difference strengths of restrictions even when none was operative, is to check whether the Arabic data does, in fact, motivate different strengths of OCP restrictions at all.
+
+We can do this by comparing nested models. As a sanity check, let's start by comparing models with and without OCP factors. The model without just uses the "E" values, expected rates of occurrence of different segments in different positions. The O/E tables from Frisch et al. calculate E over classes of segments, but a simple and accurate baseline is to use the probability of each segment in each position. (Wilson and Obdeyn also use this as one of their conditions). That is, make C1 and C2 factors, so that the model has parameters for the counts of each segment in each position (minus 1)
+
+```{r}
+# Convert to factors
+fpb_adjacent.long$C1 = factor(fpb_adjacent.long$C1)
+fpb_adjacent.long$C2 = factor(fpb_adjacent.long$C2)
+# It makes sense to sum code these, so that anything else that we add is interpreted at the grand mean of all segments
+contrasts(fpb_adjacent.long$C1) = contr.sum(levels(fpb_adjacent.long$C1))
+contrasts(fpb_adjacent.long$C2) = contr.sum(levels(fpb_adjacent.long$C2))
+```
+
+## Baseline model: no OCP at all
+
+So now the baseline "segments only" model just predicts the frequency of segment pairs without taking cooccurrence into account at all. This is hard to make sense of in detail, though of course different segments do have different frequencies. The sanity check is a plot, which shows that in general, pairs involving more frequent segments are more frequent. (However, there are also many pairs with dictionary count of 0, but high predicted counts; many of these these presumably represent phonological restrictions)
+
+```{r}
+arabic.segs_only.glm = glm(count ~ C1 + C2, data=fpb_adjacent.long, family=poisson(link=log))
+# This is hard to make sense of in detail, though of course different segments do have different frequencies
+summary(arabic.segs_only.glm)
+
+
+# Make a plot
+segs_only.plot = ggplot(fpb_adjacent.long,aes(x=exp(predict(arabic.segs_only.glm)),y=fpb_adjacent.long$count)) + geom_point()  +  theme_minimal()
+segs_only.plot + xlab("Predicted Count, marginal seg probs") + ylab("Dictionary Count")
+
+```
+
+## Simple OCP model: just one level of violation
+
+The next step is to incorporate the simple version of OCP(place), which is encoded here as match_place. We make a second model that adds this, and compare the results. We can inspect them visually, but the true comparison is a likelihood ratio test.
+
+```{r}
+# Now we incorporate OCP (matching place). Let's start with just the general OCP
+
+arabic.place_general.glm = glm(count~ C1 + C2 + match_place, data=fpb_adjacent.long, family=poisson(link=log))
+summary(arabic.place_general.glm)
+
+# Make a plot
+place_general.plot = ggplot(fpb_adjacent.long,aes(x=exp(predict(arabic.place_general.glm)),y=fpb_adjacent.long$count)) + geom_point()  +  theme_minimal()
+place_general.plot + xlab("Predicted Count, general OCP") + ylab("Dictionary Count")
+
+
+# Compare with a LRT: does OCP_Place help?
+anova(arabic.segs_only.glm,arabic.place_general.glm,test="Chisq")
+```
+
+## The identity effect
+
+Adam realized late at night: Pierrehumbert (following McCarthy and others) observes that in Arabic, strict identity seems to be a special case (though Coetzee and Pater point out that this is not the case in the same way in Muna). Frisch, Pierrehumbert, and Broe argue that an advantage of the similarity-based approach is that it makes identity the extreme version of similarity, but they do not show that the identity effect is "only" as strong as very strong similarity. It could be that strict identity is even worse than predicted by their approach. Also, incorporating the strict identity effect could be important for estimating differences among different places of articulation, because there are different numbers of segments at each place (so, different proportions of pairs are strictly identical). So this suggests something that needs to be added: \* A factor for strict identity \* Incorporating it into the place-specific OCP model (and also considering it later when evaluating similarity)
+
+## Differences among places
+
+Now, we can check whether places differ from each other. This was one of McCarthy's and Pierrehumbert's main claims, and one of Frisch, Pierrehumbert and Broe's main explicanda.
+
+One might think that the simplest thing to do is simply include a "place" factor to see whether the effect differs across different places. This won't work, however, because "place" applies to all consonants (including pairs that don't violate OCP, which have two places). So, what we really want is to check different-placed OCP violations have different weights. We can do this by including the match_X factors, but if we include general match_place, then we can't include every single place (overspecified). Let's omit guttural.
+
+```{r}
+# Now check whether places differ from each other. 
+arabic.place_specific.glm = glm(count~ C1 + C2 + match_place + match_lab + match_cor + match_dors, data=fpb_adjacent.long, family=poisson(link=log))
+summary(arabic.place_specific.glm)
+
+# Make a plot
+place_specific.plot = ggplot(fpb_adjacent.long,aes(x=exp(predict(arabic.place_specific.glm)),y=fpb_adjacent.long$count)) + geom_point()  +  theme_minimal()
+place_specific.plot + xlab("Predicted Count, place-specific OCP") + ylab("Dictionary Count")
+
+# Compare with a LRT: does OCP_Place help?
+anova(arabic.place_general.glm,arabic.place_specific.glm,test="Chisq")
+```
+
+There are a lot of zeros, and specifically all the match_lab are 0, causing the model to not be able to accurately estimate the variance for this cell. Agresti suggests replacing 0 with 10e-8. That's actually too small for present purposes, but we can see how this works with 10e-3
+
+```{r}
+# Replace zero's with 10e-3
+fpb_adjacent.long = fpb_adjacent.long %>% mutate(count2 = if_else(count<1,10e-3,count))
+
+# The following does generate a lot of errors, because counts should be integers, but it also gives a more sensible estimate. I'm not actually sure what the best practice here is.
+arabic.place_specific.adjusted.glm = glm(count2~ C1 + C2 + match_place + match_lab + match_cor + match_dors, data=fpb_adjacent.long, family=poisson(link=log))
+summary(arabic.place_specific.adjusted.glm)
+
+```
+
+## The role of sonority
+
+Another claim is that matching sonority matters, specifically for coronals. We can build up to that, by first asking whether it matters in general (independent of place). Pierrehumbert's table is supposed to show that OCP(sonorant) isn't a general effect, but here we test it. It turns out that there does seem to be a modest but significant effect of sonority in general
+
+```{r}
+# A model that includes sonority
+arabic.place_specific.son.glm = glm(count~ C1 + C2 + match_place + match_lab + match_cor + match_dors + match_son, data=fpb_adjacent.long, family=poisson(link=log))
+summary(arabic.place_specific.son.glm )
+
+# Compare with a LRT: does sonority help?
+anova(arabic.place_specific.glm,arabic.place_specific.son.glm,test="Chisq")
+```
+
+The empirical claim is that sonority modulates OCP(place), with different effects at different places. This can be tested by including an interaction between match_son and place-specific OCP(place) constraints. One conceivable outcome would be that the overall effect just observed for match_son turns out to be confined to a particular subset of the data (coronal OCP violations?) and the main effect disappears once we include the proper interaction terms.
+
+```{r}
+# Model to check whether sonority has a different effect by place
+arabic.place_specific.place_son.glm = glm(count~ C1 + C2 + match_place + (match_lab + match_cor + match_dors)*match_son, data=fpb_adjacent.long, family=poisson(link=log))
+summary(arabic.place_specific.place_son.glm )
+
+# Compare with a LRT: does sonority affect OCP(place)?
+anova(arabic.place_specific.son.glm,arabic.place_specific.place_son.glm,test="Chisq")
+
+```
+
+## Similarity
+
+Now we compare a model that uses similarity to module OCP(place). The hypothesis is that similarity only matters if it's an OCP place violation. The similarity values are designed to be defined only for pairs at the same place of articulation, but it appears that some are defined for non-homorganic pairs (I'm not sure why).
+
+## Exercise
+
+Restrict the test of similarity to true OCP(place) violators.
+
+## Exercise
+
+Is identity truly the natural endpoint of similarity, or is the identity effect stronger than expected?
+
+```{r}
+# Now compare a model that just uses similarity
+arabic.sim.glm = glm(count~ C1 + C2 + sim, data=fpb_adjacent.long, family=poisson(link=log))
+summary(arabic.sim.glm)
+
+sim.plot = ggplot(fpb_adjacent.long,aes(x=exp(predict(arabic.sim.glm)),y=fpb_adjacent.long$count)) + geom_point()  +  theme_minimal()
+sim.plot + xlab("Predicted Count, place-specific OCP") + ylab("Dictionary Count")
+
+# Compare the log likelihood of the two models
+logLik(arabic.sim.glm)
+logLik(arabic.place_specific.place_son.glm)
+```
+
+```{r}
+# We can also do a non-nested model comparison, using the procedure from Vuong (1986)
+library(nonnest2)
+vuongtest(arabic.sim.glm,arabic.place_specific.place_son.glm)
+icci(arabic.sim.glm,arabic.place_specific.place_son.glm)
+
+
+# We can examine the residuals.
+# Residuals are predicted - actual
+# predicted: predict(arabic.sim.glm)
+# actual: fpb_adjacent.long$count
+sim_resids = predict(arabic.sim.glm) - fpb_adjacent.long$count
+```

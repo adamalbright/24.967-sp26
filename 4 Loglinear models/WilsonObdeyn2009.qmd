@@ -1,0 +1,246 @@
+---
+title: "Wilson and Obdeyn (2009)"
+output: html_document
+date: "2026-03-04"
+---
+
+```{r}
+library(tidyverse)
+library(MASS)
+```
+
+# Wilson and Obdeyn's schematic example
+
+The purpose of this example is to show that if you generate observed counts using marginal probabilities and a cooccurrence restriction, calculating O/E does not recover the true probability.
+
+First we construct the table of generating probabilities
+
+```{r}
+# Construct the table of generating probabilities
+segs = c("p","t","k")
+freqs = c(1/3,1/2,1/6)
+wilsonobdeyn2008 = data.frame(cbind(expand.grid(segs,segs,stringsAsFactors=TRUE),
+expand.grid(freqs,freqs)))
+names(wilsonobdeyn2008) = c("C1","C2","C1.prob","C2.prob")
+wilsonobdeyn2008$CC.prob = c(.5,1,1,1,.5,1,1,1,.5)
+wilsonobdeyn2008$gen.prob = with(wilsonobdeyn2008, C1.prob*C2.prob*CC.prob)
+
+```
+
+Now normalize to get the probability of each cell
+
+```{r}
+wilsonobdeyn2008$gen.prob.norm = wilsonobdeyn2008$gen.prob/sum(wilsonobdeyn2008$gen.prob)
+```
+
+Calculate the expected counts, for a sample of 5000 words
+
+```{r}
+# Expected counts (frequencies) in sample of 5000
+wilsonobdeyn2008$Freq = round(wilsonobdeyn2008$gen.prob.norm*5000)
+
+```
+
+Now we are ready to see the O/E problem that Wilson and Obdeyn point out.
+
+Using the table of expected counts that we just generated, we calculate the actual probabilities of each segment
+
+```{r}
+wilsonobdeyn2008.obsfreq = matrix(wilsonobdeyn2008$Freq,nrow=3)
+wilsonobdeyn2008.obsprob.C1 = data.frame(prob=rowSums(wilsonobdeyn2008.obsfreq)/sum(wilsonobdeyn2008.obsfreq),row.names=c("p","t","k"))
+wilsonobdeyn2008.obsprob.C2 = data.frame(prob=colSums(wilsonobdeyn2008.obsfreq)/sum(wilsonobdeyn2008.obsfreq),row.names=c("p","t","k"))
+
+wilsonobdeyn2008$C1.obsprob = wilsonobdeyn2008.obsprob.C1[wilsonobdeyn2008$C1,"prob"]
+wilsonobdeyn2008$C2.obsprob = wilsonobdeyn2008.obsprob.C2[wilsonobdeyn2008$C2,"prob"]
+
+```
+
+Now calculate O/E. Not only does this not yield 1's and .5's, but it actually yields different degrees of underattested by place (.58, .72, .48), making it look like a subsidiary feature is active.
+
+```{r}
+wilsonobdeyn2008$OE = wilsonobdeyn2008$Freq / (wilsonobdeyn2008$C1.obsprob*wilsonobdeyn2008$C2.obsprob*5000)
+round(wilsonobdeyn2008$OE,2)
+
+```
+
+# Using loglinear models instead
+
+We create columns for factors to test for different degrees of restriction.
+
+```{r}
+wilsonobdeyn2008$OCP_Place = c(1,0,0,0,1,0,0,0,1)
+wilsonobdeyn2008$OCP_Lab = c(1,0,0,0,0,0,0,0,0)
+wilsonobdeyn2008$OCP_Cor = c(0,0,0,0,1,0,0,0,0)
+wilsonobdeyn2008$OCP_Dors = c(0,0,0,0,0,0,0,0,1)
+
+```
+
+The true "baseline" is a model with no cooccurrence restrictions at all. This model tries to predict the count of each root based solely on the independent probabilities of each consonant. In the Wilson and Obdeyn example, roots are always "biconsonantal" (imagine C~1~VC~2~ or C~1~VC~2~V), and there is no positional effect that gives consonants a different probability in C~1~ position vs. C~2~ position. However, in principle we would want to allow for segments to have different probabilities in different positions, and in practice they will normally differ a bit. So, we model the counts of C1's and C2's separately, with the C1 and C2 factors.
+
+We need to set up the contrasts so we can model the counts with a linear model. By default, R uses dummy (treatment) coding.
+
+```{r}
+str(wilsonobdeyn2008$C1)
+contrasts(wilsonobdeyn2008$C1)
+```
+
+This is ultimately *not* what we want in most cases, probably, but for the moment it's a pedagogically useful place to start, since it will make it easier for us to check the interpretation of the coefficients against the generating frequencies in Wilson and Obdeyn's example, and the exercise of interpreting them drives home why we probably don't usually want to do things this way.
+
+## Replicating Wilson and Obdeyn (2008)
+
+If there are no co-occurrence effects, then it would be sufficient to model the lexical frequencies based on the independent probabilities of C1 and C2. That is, the "expected" values are a model with just the (position-dependent) probabilities of C1 and C2.
+
+```{r}
+wilsonobdeyn2008.expected = glm(Freq ~ C1+C2, family=poisson(link="log"),data=wilsonobdeyn2008)
+summary(wilsonobdeyn2008.expected)
+
+```
+
+This model has the same coefficients for C1 and C2 position, since the lexicon did not distinguish frequencies in the two positions (either in the base position, or as part of the OCP restrictions). It says that /t/ is more frequent than /p/ (the baseline), and /k/ is less frequent than /p/. That much is correct, the estimates of the amounts are wrong.
+
+The intercept represents the log of count when C1 is p and C2 is p. That is, the predicted frequency of p-p roots is exp(intercept). This is not particularly close. (The actual value is 345)
+
+```{r}
+exp(wilsonobdeyn2008.expected$coefficients[ "(Intercept)" ])
+```
+
+The expected count of t-p relative to p-p is exp(intercept+C1t). Because of the following equivalency:
+
+| a^x+y^ = a^x^ \* a^y^
+
+...we also know that the coefficient for C1t represents the proportion of t-p items relative to p-p items. In the generating table, that should be 1.5 times more, but the estimate in this model falls short.
+
+```{r}
+# Predicted count of t-p items
+exp(sum(wilsonobdeyn2008.expected$coefficients[ c("(Intercept)", "C1t")] ))
+
+# Proportion of t-p relative to p-p
+exp(sum(wilsonobdeyn2008.expected$coefficients[ "C1t" ]))
+```
+
+Why does this model fail to recover the generating frequencies for /p/ vs. /t/ vs. /k/?
+
+These frequencies are obscured in the data by the OCP restriction, which causes some cell counts to be lower than expected. Since the model has no way of isolating this effect, the estimates are off for the general frequencies.
+
+This suggests that we should do better if we incorporate a factor OCP(place), which allows the counts of the cells "on the diagonal" (same place) to be adjusted by some amount. It is easy to incorporate this adjustment, with the `OCP_Place` factor we created above.
+
+```{r}
+wilsonobdeyn2008.genonly = glm(Freq ~ C1 + C2 + OCP_Place, data=wilsonobdeyn2008,family=poisson(link="log"))
+
+summary(wilsonobdeyn2008.genonly)
+```
+
+Examining the predicted counts, we must ask what the intercept represents. Since C1 and C2 are dummy/treatment coded, the intercept represents the (log of the) count at the baseline, /p/ and /p/. However, this combination does violate OCP(place). So, it represents something that doesn't actually exist: "p-p roots that don't violate OCP(place)".
+
+```{r}
+# Examine the intercept (log of count of p-p items, which was 345 in the data)
+exp(wilsonobdeyn2008.genonly$coefficients[ "(Intercept)" ])
+```
+
+The actual predicted count of p-p needs to take OCP into account. The coefficient for OCP_Place is negative, meaning root types that violate it are underattested.
+
+```{r}
+# Fitted count for p-p roots. (Reminder: the observed number was 345)
+exp(sum(wilsonobdeyn2008.genonly$coefficients[ c("(Intercept)", "OCP_Place" ) ]))
+```
+
+This model now correctly recovers the relative generating probabilities for /t/, /k/, and OCP_Place. (The ability to cleanly see p(/t/)=1.5\*p(/p/) and p(/k/)=0.5\*p(/p/) is the reason why this initial model has used dummy coding with /p/ as a baseline.)
+
+```{r}
+# Proportion of /t/, relative to /p/ (should be 1.5)
+exp(wilsonobdeyn2008.genonly$coefficients[ "C1t" ])
+
+# Proportion of /k/, relative to /p/ (should be 0.5)
+exp(wilsonobdeyn2008.genonly$coefficients[ "C1k" ])
+
+# Underattestation amount for roots that violate OCP_Place. The generated frequency was 1/2
+exp(wilsonobdeyn2008.genonly$coefficients[ "OCP_Place" ])
+```
+
+Finishing out the Wilson and Obdeyn point, and then we'll come back to the coding of place: Wilson and Obdeyn demand (correctly) that a model should tell us that in this synthesized data, there are no differences between places in the strength of OCP(place). One might approach this by comparing a model with a single OCP(place) vs. a model with separate OCP(labial), OCP(coronal), OCP(dorsal). However, this comparison is non-nested. They present an approach to non-nested comparisons, using the "Laplace approximation". We do not need this here, however, since we could just as easily perform a nested model comparison: (For 3 places, we can test for 2 effects; here, I've arbitrarily chosen Lab and Cor)
+
+-   General only: `OCP_place`
+
+-   General + specific: `OCP_Place + OCP_Lab + OCP_Cor` (or any two specific ones)
+
+```{r}
+# We already fitted the "general only" model above (wilsonobdeyn2008.genonly). So now the model with both general and place-specific OCP factors
+wilsonobdeyn2008.genandspec = glm(Freq ~ C1 + C2 + OCP_Place + OCP_Lab + OCP_Cor, data=wilsonobdeyn2008,family=poisson())
+
+summary(wilsonobdeyn2008.genandspec)
+```
+
+Now we can compare the models. Any small difference between these two models should be a by-product of rounding when creating the integer counts (or optimization)
+
+```{r}
+# A likelihood ratio test. 
+anova(wilsonobdeyn2008.genonly,wilsonobdeyn2008.genandspec,test="Chisq")
+```
+
+## Showing differences by place
+
+Wilson and Obdeyn are focused on showing that the loglinear model correctly shows no place differences if the generating frequencies have no place effect. For a sanity check, we should see what this approach tells us when there is a difference in OCP-violating frequencies by place.
+
+We repeat the data construction from above, but this time with different place restrictions. First we construct the table of generating probabilities
+
+```{r}
+# Construct the table of generating probabilities
+segs = c("p","t","k")
+freqs = c(1/3,1/2,1/6)
+placediffs = data.frame(cbind(expand.grid(segs,segs,stringsAsFactors=TRUE),
+expand.grid(freqs,freqs)))
+names(placediffs) = c("C1","C2","C1.prob","C2.prob")
+# Here is where we put different strengths of cooccurrence restrictions on the diagonal (stronger for labial and dorsal, weaker for coronal)
+placediffs$CC.prob = c(.2,1,1,1,.6,1,1,1,.3)
+placediffs$gen.prob = with(placediffs, C1.prob*C2.prob*CC.prob)
+
+```
+
+Now normalize to get the probability of each cell
+
+```{r}
+placediffs$gen.prob.norm = placediffs$gen.prob/sum(placediffs$gen.prob)
+```
+
+Calculate the expected counts, for a sample of 5000 words
+
+```{r}
+# Expected counts (frequencies) in sample of 5000
+placediffs$Freq = round(placediffs$gen.prob.norm*5000)
+
+```
+
+Create the OCP factors
+
+```{r}
+placediffs$OCP_Place = c(1,0,0,0,1,0,0,0,1)
+placediffs$OCP_Lab = c(1,0,0,0,0,0,0,0,0)
+placediffs$OCP_Cor = c(0,0,0,0,1,0,0,0,0)
+placediffs$OCP_Dors = c(0,0,0,0,0,0,0,0,1)
+```
+
+```{r}
+# Models using dummy coding
+# General OCP only
+placediffs.dummy.genonly = glm(Freq ~ C1 + C2 + OCP_Place, data=placediffs,family=poisson(link="log"))
+
+summary(placediffs.dummy.genonly)
+
+# Both general and specific OCP
+placediffs.dummy.genandspec = glm(Freq ~ C1 + C2 + OCP_Place + OCP_Lab + OCP_Cor, data=placediffs,family=poisson())
+
+summary(placediffs.dummy.genandspec)
+```
+
+Likelihood ratio test to see whether place-specific OCP effects are warranted.
+
+```{r}
+anova(placediffs.dummy.genonly,placediffs.dummy.genandspec,test="Chisq")
+```
+
+```{r}
+hypothesis.matrix = matrix(c(0,1,0,0,0,1),ncol=3,byrow=TRUE,dimnames=list(c("t","k"),c("p","t","k")))
+contrast.matrix = ginv(hypothesis)
+
+contrasts(wilsonobdeyn2008$C1)
+```

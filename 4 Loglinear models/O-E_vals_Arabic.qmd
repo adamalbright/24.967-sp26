@@ -435,6 +435,9 @@ fpb_adjacent.long$C2prob = fpb_adjacent.C2prob[fpb_adjacent.long$C2]
 
 fpb_adjacent.long$E = fpb_adjacent.long$C1prob * fpb_adjacent.long$C2prob * N
 
+# Save the result in a file to be able to examine and analyze later
+write_tsv(fpb_adjacent.long, "FPB-segpairs.adjacent.oe.txt")
+
 ```
 
 We can examine the relation between O and E.
