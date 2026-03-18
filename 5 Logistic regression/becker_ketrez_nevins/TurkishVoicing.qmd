@@ -1,0 +1,440 @@
+---
+title: "Turkish lexical analysis"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(stringr)
+library(scales) # Optional: for formatting y-axis as percentage
+library(lme4)
+
+# The car package can give us better-named contrast levels
+library(car)
+```
+
+# Voicing alternations in the Turkish lexicon
+
+This document attempts to mirror (roughly) the statistical analysis of the lexicon presented by Becker, Ketrez, and Nevins (2011), and compare it to the experimental results.
+
+First, we read in the lexicon, with some information already provided about each entry.
+
+```{r}
+# Read in the lexicon and experiment data
+bkn.all = read.table("lexicon.csv",,sep="\t",quote="",header=TRUE)
+```
+
+Now set up 'type' (syllable shape) and vowel features as factors
+
+```{r}
+# Type is: (non-alternating) voiceless, (non-alternating) voiced, (voiceless~voiced) alternating, (voiceless~voiced) vacillator, and (voiced~Ø) voiced2.
+# The choice in the experiment was between voiceless and alternating. For the lexical analysis, Becker et al report an ordinal multinomial logistic regression, predicting: non-alternating (voiced and voiceless?) vs. vacillating vs. alternating.  However, the vacillators don't seem to affect the outcome much.  So, their analysis boils down to non-alternating vs. alternating.  It seems we need to make a new factor for this. 
+
+
+# We might as well ditch the "voiced2" (g~Ø) category, which is small and which BKN ignore. (there are 6 of them). Also ditch the vacillators for purposes of this exercise (about 100)
+bkn.filtered = filter(bkn.all, ! type %in% c("voiced2","vacillator"))
+	 
+# Now create a "bkn_type" factor, which is "alternating" if BKN list it as alternating, and "non-alternating" otherwise (i.e., collapses types of non-alternation)
+
+bkn = bkn.filtered %>% mutate(bkn_type = if_else(type=="alternating", "alternating", "non-alternating") )
+
+
+```
+
+Now create factors and order them in an intuitive way for the desired comparisons.
+
+```{r}
+bkn$bkn_type = factor(bkn$bkn_type, levels=c("non-alternating", "alternating"))
+
+# We need to order these carefully to replicate BKN
+bkn$size = factor(bkn$size,levels=c("CVC","CVCC","CVCVC"))
+bkn$place = factor(bkn$place,levels=c("DOR","LAB","COR","PAL"))
+
+# The following is kind of overkill for converting three columns to factors, but it shows a way to do a bunch at once
+
+vowelfactors = c("high", "back", "round")
+bkn = bkn %>%
+  mutate(across(.cols = all_of(vowelfactors), .fns = as.factor))
+```
+
+Becker et al. use dummy coding, so the vowel features are already set up this way (0 and 1). However, sum coding aids in interpretability, so one might want to specify sum coding.
+
+```{r}
+################################################
+# Contrast coding (can skip to replicate BKN)
+################################################
+# If we simply specify sum coding on factors with levels "0" and "1" (i.e., as the high, back, and round factors are), the values 0/1 come out to be 1 for 0 and -1 for 1---i.e., effect of back is positive when non-back is higher. 
+# So, the end result will be more intuitive if we switch the order of the levels. I don't happen to know a "tidyverse" way of doing this.
+vowelfactors = c("high", "back", "round")
+for (var in vowelfactors) {
+	bkn[,var] = factor(bkn[,var], levels=c(1,0))
+}
+
+sumfactors = c("size", "place", "high", "back", "round")
+# Now we can set the contrasts. We'll use contr.Sum from the 'car' package
+for (var in sumfactors) {
+	contrasts(bkn[,var]) = contr.Sum(levels(bkn[,var]))	
+}
+################################################
+```
+
+## Visualizing the effects
+
+```{r}
+voicing_proportions = bkn |> 
+  count(bkn_type, size, place) |> 
+  group_by(size, place) |>
+  mutate(percent = n / sum(n))
+
+voicing_proportions$bkn_type = factor(voicing_proportions$bkn_type, levels=c("alternating","non-alternating"))
+voicing_proportions$place = factor(voicing_proportions$place, levels=c("LAB","COR","PAL","DOR"))
+
+ggplot(voicing_proportions |> filter(bkn_type=="alternating"), aes(x = size, y = percent, fill = factor(place))) +
+  geom_col(position = position_dodge()) + # Use position_dodge for side-by-side bars
+  scale_y_continuous(labels = percent) + # Format y-axis as percentage points
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    x = "Root type",
+    y = "Proportion of alternators",
+    fill = "Place",
+    title = ""
+  ) +
+  theme_classic() + 
+  theme(axis.title = element_text(size = 12),axis.text = element_text(size = 12),legend.text = element_text(size = 12)) +
+  scale_fill_viridis_d() 
+```
+
+## Logistic regression models
+
+Becker et al report: "First, each of these five predictors was assessed in its own model, to measure each pre- dictor’s overall power in the lexicon (Table 1). This power is measured by Somers’s Dxy and by the model’s likelihood ratio (model LR), which comes with a number of degrees of freedom and a p-value (Baayen 2008:203ff.). It turns out that place, high, size,6 and back are highly predictive of alternations, in that order, and round is not."
+
+We can replicate this by constructing logistic regressions for each predictor independently.
+
+```{r}
+# Logistic regressions for each factor independently
+
+# Final C Place
+bkn.place.lr = glm(bkn_type ~ place, data=bkn, family=binomial(link="logit"))
+summary(bkn.place.lr)
+anova(bkn.place.lr,test="Chisq")
+
+# Root Size
+bkn.size.lr = glm(bkn_type ~ size, data=bkn, family=binomial(link="logit"))
+summary(bkn.size.lr)
+anova(bkn.size.lr,test="Chisq")
+
+# Vowel Height
+bkn.high.lr = glm(bkn_type ~ high, data=bkn, family=binomial(link="logit"))
+summary(bkn.high.lr)
+anova(bkn.high.lr,test="Chisq")
+
+# Vowel backness
+bkn.back.lr = glm(bkn_type ~ back, data=bkn, family=binomial(link="logit"))
+summary(bkn.back.lr)
+anova(bkn.back.lr,test="Chisq")
+
+# Vowel roundness
+bkn.round.lr = glm(bkn_type ~ round, data=bkn, family=binomial(link="logit"))
+summary(bkn.round.lr)
+anova(bkn.round.lr,test="Chisq")
+```
+
+These separate models don't really tell us all that much, however, because we don't know whether they're correlated with one another or interact in other ways. BKN use forward stepwise comparisons to build a model. The general picture that emerges is that alternation is best predicted by:
+
+-   place\*size
+
+-   place\*(high+back)
+
+We can see the flavor of forward stepwise modeling by comparing a models with place, size, place\*size, and then height and rounding.
+
+```{r}
+bkn.forward1 = glm(bkn_type ~ place, data=bkn, family=binomial(link="logit"))
+bkn.forward2 = glm(bkn_type ~ place + size, data=bkn, family=binomial(link="logit"))
+bkn.forward3 = glm(bkn_type ~ place * size, data=bkn, family=binomial(link="logit"))
+bkn.forward4 = glm(bkn_type ~ place * size + high, data=bkn, family=binomial(link="logit"))
+bkn.forward5 = glm(bkn_type ~ place * size + high + round, data=bkn, family=binomial(link="logit"))
+
+anova(bkn.forward1, bkn.forward2, bkn.forward3, bkn.forward4, bkn.forward5, test="Chisq")
+```
+
+The following is the full model that BKN arrive at (though the coefficients aren't quite the same as what BKN report).
+
+***Consider carefully how to interpret these effects and interactions.***
+
+```{r}
+# Logistic regression with full set of factors that BKN settle on
+bkn.final.lr = glm(bkn_type ~ place*size + place*(high+back), data=bkn, family=binomial(link="logit"))
+summary(bkn.final.lr)
+anova(bkn.final.lr,test="Chisq")
+```
+
+## Forwards vs. backwards
+
+Rather than building a model forward stepwise, it is somewhat more common to arrive at one backward stepwise, pruning unnecessary factors from a complete model.
+
+One obstacle to going backwards is that full models sometimes carve up the data so much that some combinations don't exist, or the observations in some cells are perfectly consistent so the probability is 0 or 1, and the coefficients can't be estimated. (Note that this isn't really intrinsically a problem of small data/many factors, but it's more likely to occur under these conditions.) Unfortunately, in the current case, that is precisely what happens.
+
+```{r}
+# The following is too complex a model: "glm.fit: fitted probabilities numerically 0 or 1 occurred"
+bkn.full.lr = glm(bkn_type ~ place*size*(high+back+round), data=bkn, family=binomial(link="logit"))
+summary(bkn.full.lr)
+anova(bkn.full.lr,test="Chisq")
+```
+
+We can see the values close to 0 or 1 in the predictions. Recall that since odds = p/(1-p), probability is odds/(1+odds), and logistic regression models the log of the odds.
+
+```{r}
+bkn.full.lr.predict = predict(bkn.full.lr)
+bkn.full.lr.probs = exp(bkn.full.lr.predict) / (1+exp(bkn.full.lr.predict))
+
+# Or, for convenience, predict() can do this directly
+bkn.full.lr.predict1 = predict(bkn.full.lr,type = "response")
+```
+
+If we had continuous predictors, we could try to make the predictors less correlated by centering/scaling them, but in this case we just have categorical predictors, coded according to the contrast matrix. So, we'd probably just have to prune back the model, and see whether we ended up at somewhere similar to where forward stepwise modeling landed.
+
+## From a lexical model to experimental predictions
+
+The model so far probes what factors distinguish "alternating" from "non-alternating" roots. Becker et al. are interested in the question of whether there are lexically predictive factors that humans fail to utilize (or underutilize). This suggests an experimental hypothesis: if we vary the root shape according to these factors, do they also affect native speakers' judgments about whether the root should alternate or not, in the same way?
+
+We can't do this experiment, in exactly this form. Why not? The problem lies in the distinction between "alternating" vs. "non-alternating", which is defined as follows:
+
+-   alternating: T\~D
+
+-   non-alternating: T (voiceless non-alternating) and D (voiced non-alternating)
+
+In actuality, novel items need to be presented in some form or other, either unsuffixed or suffixed. Crucially, whatever form is presented must be presented with either a voiceless or voiced segment (T or D), which will let the participant eliminate one type of pattern. For example, if an unsuffixed form with T is presented, the participant knows that it is not non-alternating D. In the actual experiment, Becker et al. do present unsuffixed forms ending in voiceless obstruents, so participants are really just deciding between "voiceless non-alternating" and "alternating". So, a more accurate question for the lexicon is what factors distinguish alternating from voiceless non-alternating stems. Do the same factors still seem to condition the choice?
+
+In general, the answer seems to be yes.
+
+```{r}
+# Narrow the response options down to "voiceless" vs. "alternating" (i.e., the two categories that are voiceless in unsuffixed forms)
+bkn_choice = subset(bkn, bkn$type=="voiceless" | bkn$type=="alternating")
+nrow(bkn_choice)
+
+bkn_choice$type = factor(bkn_choice$type)
+bkn_choice.final.lr = glm(bkn_type ~ place*size + place*(high+back), data=bkn_choice, family=binomial(link="logit"))
+summary(bkn_choice.final.lr)
+anova(bkn_choice.final.lr,test="Chisq")
+```
+
+It's also maybe interesting to note that on this subpart of the data, the "full" model doesn't suffer quite so much from fitted probabilities of 0 or 1.
+
+```{r}
+bkn_choice.full.lr = glm(bkn_type ~ place*size*(high+back+round), data=bkn_choice, family=binomial(link="logit"))
+summary(bkn_choice.full.lr)
+anova(bkn_choice.full.lr,test="Chisq")
+```
+
+## Disentangling syllable count and clusters
+
+The models above treat root shape as CVC (monosyllabic ending in a singleton) vs. CVCC (monosyllabic, ending in a cluster) vs. CVCV(C)C (polysyllabic, regardless of clusters). In principle syllable count and ending in a cluster are orthogonal properties, and perhaps should be modeled as such. It's not obvious why disentangling these would alter the conclusions about other properties, like vowel quality, but it's also not obvious that a better model of root length + clusters would *not* affect the conclusions about other properties.
+
+Let's make a new version of the data, adding a separate column for final clusters. (Syllable count is already included as "syllables", which is mono vs poly)
+
+```{r}
+bkn_choice_recoded = bkn_choice |> mutate(final_cluster = if_else(str_ends(shape, "CC"),"CC","C"))
+
+# Set sum coding for syllable (count) and final_cluster
+bkn_choice_recoded$syllable = factor(bkn_choice_recoded$syllable, levels=c("poly","mono"))
+# We do want this sum coded
+contrasts(bkn_choice_recoded$syllable) = contr.sum(levels(bkn_choice_recoded$syllable))
+
+# Also for final_cluster
+bkn_choice_recoded$final_cluster = factor(bkn_choice_recoded$final_cluster, levels=c("CC","C"))
+contrasts(bkn_choice_recoded$final_cluster) = contr.Sum(levels(bkn_choice_recoded$final_cluster))
+```
+
+Now we incoporate these into a model of the choice between voiceless and alternating, as immediately above. The general conclusions still do not change, but this is perhaps a more informative model because it gives a slightly fuller picture of where the final cluster effects are seen.
+
+```{r}
+bkn_choice.recoded.final.lr = glm(bkn_type ~ place*syllables*final_cluster + place*(high+back), data=bkn_choice_recoded, family=binomial(link="logit"))
+summary(bkn_choice.recoded.final.lr)
+anova(bkn_choice.recoded.final.lr,test="Chisq")
+```
+
+# Voicing alternations in the experiment
+
+First, we read in the experimental data
+
+```{r}
+# Read in the experiment data
+bkn.exp = read.table("experiment.csv",sep="\t",quote="",header=TRUE)
+```
+
+Now we set up the factors. #hithere
+
+```{r}
+# Choice is 1 for voiced (alternating) and 0 for voiceless (non-alternating)
+
+# Let's change the predictors to factors, and sum code. 
+randfactors = c("participant", "item")
+for (var in randfactors) {
+	bkn.exp[,var] = factor(bkn.exp[,var])	
+}
+# We need to order these carefully to replicate BKN
+bkn.exp$size = factor(bkn.exp$size,levels=c("CVCC","CVCVC","CVC"))
+bkn.exp$place = factor(bkn.exp$place,levels=c("LAB","COR","PAL","DOR"))
+vowelfactors = c("high", "back", "round")
+bkn.exp = bkn.exp %>%
+  mutate(across(.cols = all_of(vowelfactors), .fns = as.factor))
+```
+
+As with the lexical models, Becker et al. (2011) do not carefully consider factor coding, but we would probably want to use sum coding.
+
+```{r}
+################################################
+# Contrast coding (can skip to replicate BKN)
+################################################
+# Unfortunately, for high, back, round, the values 0/1 come out to be 1 for 0 and -1 for 1 (i.e., effect of back is positive when non-back is higher)
+# Let's switch the order of the levels
+vowelfactors = c("high", "back", "round")
+for (var in vowelfactors) {
+	bkn.exp[,var] = factor(bkn.exp[,var], levels=c(1,0))
+}
+
+sumfactors = c("size", "place", "high", "back", "round")
+# Now we can set the contrasts. We'll use contr.Sum from the 'car' package
+for (var in sumfactors) {
+	contrasts(bkn.exp[,var]) = contr.Sum(levels(bkn.exp[,var]))	
+}
+################################################
+```
+
+Becker et al. say:
+
+> The results were analyzed with a mixed-effects logistic regression in R (R Development Core Team 2007) using the lmer() function of the lme4 package, with participant and item as random-effect variables. The fixed-effect variables were the same ones used in the analysis of the lexicon: size, place, high, back, and round.
+>
+> An initial model was fitted to the data using only size and place as predictors. Adding their interaction to the model made a significant improvement (sequential ANOVA model comparison, χ2(6) = 50.58, p \< 0.001). The improved model with the interaction term is given in Table 5. This model shows that labial place and CVCVC size are more conducive to alternating responses than the baseline dorsal place and CVC size, respectively, which is exactly what we found in the lexicon model in Table 3. For the CVCC size, palatal place is significantly more conducive to voicing than the baseline dorsal place—here we see that speakers amplified and sharpened what was a mere trend in Table 3. Additionally, in the CVCVC size, all places are less conducive to alternating responses than the baseline dorsal place with the same CVCVC size, which closely matches Table 3.
+
+```{r}
+bkn.sizeplace.lr = glmer( choice ~ size*place + (1|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000)))
+summary(bkn.sizeplace.lr)
+
+```
+
+However, as we saw in the unit on mixed effects models, it is important incorporate random slopes, if we are interested in the significance of particular predictors. Unfortunately, in the present case, the full model with size\*place does has a singular fit, and even removing the interaction (size+place) has a singular fit. The following just shows that, for example, if we are particularly interested in the size effect, we might prioritize including it (which is simple enough to avoid a singular fit)
+
+```{r}
+# Possible to add random slopes?
+# The following yields a singular fit
+bkn.sizeplace.full.lr = glmer( choice ~ size*place + (1 + size*place|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=1000000))
+)
+# So, simplify: also a singular fit
+bkn.sizeplace.full.lr2 = glmer( choice ~ size*place + (1 + size + place|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000))
+)
+
+# Simplify some more
+bkn.sizeplace.full.lr3 = glmer( choice ~ size*place + (1 + size|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000))
+)
+summary(bkn.sizeplace.full.lr3)
+
+```
+
+Becker et al. go on to say:
+
+> The addition of any vowel feature to the baseline model (high, back, or round) made no significant improvement (p \> 1). No vowel feature approached significance, either on its own or by its interaction with place
+
+Height:
+
+```{r}
+bkn.sizeplacehigh.lr = glmer( choice ~ size*place + high*place + (1+size+high|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000))
+)
+summary(bkn.sizeplacehigh.lr)
+anova(bkn.sizeplace.full.lr3,bkn.sizeplacehigh.lr,test="Chisq")
+```
+
+Backness:
+
+```{r}
+bkn.sizeplaceback.lr = glmer( choice ~ size*place + back*place + (1+size+back|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000))
+)
+summary(bkn.sizeplaceback.lr)
+anova(bkn.sizeplace.full.lr3,bkn.sizeplaceback.lr,test="Chisq")
+```
+
+Rounding:
+
+```{r}
+bkn.sizeplaceround.lr = glmer( choice ~ size*place + round*place + (1+size+round|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000))
+)
+summary(bkn.sizeplaceround.lr)
+anova(bkn.sizeplace.full.lr3,bkn.sizeplaceround.lr,test="Chisq")
+```
+
+We might wonder about trying to fit a model with all vowel effects and doing backwards stepwise modeling, but the model is too complex (singular fit).
+
+```{r}
+# What about a more complicated fixed effects structure, giving vowel features more of a shot?
+# Why not work backwards from a full model?
+bkn.full.lr = glmer(choice ~ size*(high+back+round) + place*(high+back+round) + (1+high+back+round|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000))
+)
+summary(bkn.full.lr)
+
+```
+
+We can remove random slopes and fit the following, but should be cautious about the results. Regardless, it doesn't indicate any vowel effects.
+
+```{r}
+bkn.sizeplaceV.lr = glmer( choice ~ size*place + high*back*round + (1|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000))
+) # This fits
+summary(bkn.sizeplaceV.lr)
+```
+
+# Comparing with models of generalization
+
+Generalized Context Model (Nosofsky). If we take into account overall similarity to existing words, are there still specific "phonological" effects of size, place?
+
+```{r}
+# We might be curious about the role that analogy plays in these decisions. 
+gcm = read.table("turkish_items.gcm.txt",sep="\t",header=TRUE)
+# For our purposes, the "alternating" and "voiceless" rows are redundant (they sum to 1).  The voiceless rows have more info (including the nearest neighbors), so let's just keep those
+gcm = subset(gcm, Predicted.Classification=="voiceless")
+gcm$VoicingProb = 1-gcm$Probability
+row.names(gcm) = gcm$Test.item
+# Now merge the GCM probabilities into bkn
+bkn.exp$gcm = gcm[bkn.exp$item,"VoicingProb"]
+
+bkn.sizeplaceround.gcm.lr = glmer( choice ~ gcm + size*place + (1|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000)))
+summary(bkn.sizeplaceround.gcm.lr)
+
+
+bkn.gcm.lr = glmer(choice ~ gcm + (1|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000)))
+summary(bkn.gcm.lr)
+
+library(sjPlot)
+plot_model(bkn.sizeplaceround.gcm.lr)
+```
+
+## Minimal Generalization Model (Albright and Hayes)
+
+```{r}
+# We might also be curious about how well a grammatical model like the Minimal Generalization Learner can do in predicting the experimental results.
+mgl = read.table("turkish_items.mgl.txt",sep="\t",header=TRUE)
+
+mgl$voicing_prob_rel = mgl$reliability_vcd / (mgl$reliability_vcd + mgl$reliability_vcls)
+
+mgl$voicing_prob_conf = mgl$confidence_vcd / (mgl$confidence_vcd + mgl$confidence_vcls)
+
+row.names(mgl) = mgl$item
+
+bkn.exp$mgl = mgl[bkn.exp$item,"voicing_prob_conf"]
+
+# Now a model
+bkn.sizeplaceround.mgl.lr = glmer( choice ~ mgl + size*place + high + back + (1|participant) + (1|item), data=bkn.exp, family=binomial(link="logit"),
+control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000)))
+summary(bkn.sizeplaceround.mgl.lr)
+
+```

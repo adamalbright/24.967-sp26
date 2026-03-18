@@ -1,0 +1,161 @@
+# Modeling the Turkish lexicon and experimental results simultaneously
+
+```{r}
+library(tidyverse)
+library(lme4)
+```
+
+First, we read in the lexicon (from TELL) and the experimental responses (from Becker, Ketrez, and Nevin's experiment).
+
+```{r}
+# Read in the lexicon and experiment data
+lexicon.raw = read.table("lexicon.csv",sep="\t",quote="",header=TRUE)
+exp.raw = read.table("experiment.csv",sep="\t",quote="",header=TRUE)
+```
+
+Add some factors to the lexicon and experiment objects to make them have the same information.
+
+First, the experimental data doesn't have a "type" factor, so create one.
+
+```{r}
+# To make the two comparable, let's create a type factor in experiment
+# Also, we need to add the size and shape, and an indication of the coda type.  Finally, add an "exp" factor that distinguishes the experiment from the lexicon, by including the value "experiment" for data from the experiment, and "lexicon" for data from the lexicon.
+exp = exp.raw |> 
+  mutate(type = if_else(choice==1,"alternating","voiceless")) |>
+  mutate(syllables= if_else(size=="CVCVC","poly","mono")) |> 
+  mutate(coda = if_else(str_detect(size, "CC$"),"CC","C")) |>
+  mutate(exp = "experiment")
+```
+
+Now for the lexicon file. In the experiment, Becker et al. ask participants to choose between alternating and non-alternating *voiceless* outputs. So, it makes sense to do the lexical analysis comparing the same to sets of words (voiceless and alternating)
+
+```{r}
+# Restrict lexicon data to type={voiceless, alternating} to compare the experimental items, which are voiceless in the unsuffixed form
+lexicon.vcls = lexicon.raw |> filter(type %in% c("voiceless","alternating"))
+```
+
+The lexicon file has "size" and "shape", but it doesn't have coda type, and the name of the item is "citation", so we need to change that.
+
+```{r}
+# coda = final C vs. CC. Make C the default, and change to CC when the shape ends in CC. Also, rename "citation" to "item"
+lexicon.coda = lexicon.vcls |> 
+  mutate(coda = if_else(str_detect(shape, "CC$"),"CC","C")) |>
+  rename(item = citation)
+
+```
+
+In order to combine the data from the lexicon and experiment, we also need a "participant" value for the lexicon, which we'll just call TELL. In addition, we need a factor that distinguishes which data points come from the lexicon vs. those that come from the experiment.
+
+```{r}
+# For the lexicon, the "participant" is TELL, and the "exp" value is "lexicon"
+lexicon = lexicon.coda |> 
+  mutate(participant = "TELL") |>
+  mutate(exp = "lexicon")
+
+```
+
+We're done making the two objects parallel. Check that we have the same columns (they're not in the same order)
+
+```{r}
+names(lexicon)
+names(exp)
+```
+
+Finally: glue them together. Again, this could be done more elegantly with dplyr, if one wanted exercise with select, mutate, and bind_rows.
+
+```{r}
+common_cols <- intersect(colnames(lexicon), colnames(exp))
+
+turkish = rbind(
+    subset(exp, select = common_cols),
+    subset(lexicon, select = common_cols)
+  )
+
+```
+
+# A unified logistic regression
+
+First, define the factors as factors
+
+```{r}
+# Refactor factors
+turkish$type = factor(turkish$type,levels=c("voiceless","alternating"))
+turkish$coda = factor(turkish$coda,levels=c("C","CC"))
+turkish$exp = factor(turkish$exp,levels=c("experiment","lexicon"))
+turkish$place = factor(turkish$place,levels=c("DOR","LAB","COR","PAL"))
+turkish$size = factor(turkish$size,levels=c("CVC","CVCC","CVCVC"))
+```
+
+Now set up the contrasts.
+
+One major decision is how to code the lexicon/experiment difference. The two options are:
+
+-   Treatment coding: lexicon is the baseline, and interactions with exp ask: do the results in the experiment differ from the lexicon?
+-   Sum coding: main effects are those that hold of both the lexicon and experiment, and interactions with exp reveal places where the two differ
+
+The former can tell us where the experiment differs, but not whether there is still also a significant effect in the experiment, if a given preference is weaker in the experiment. The latter can tell us where there's a significant effect in both.
+
+For the present test, we'll use the latter (sum coding).
+
+It would be sensible to sum code other factors too, but these are commented out just to first try something as close as possible to BKN
+
+```{r}
+# We'll sum code exp so that main effects hold across lexicon and experiment
+contrasts(turkish$exp) = contr.sum(levels(turkish$exp))
+
+# We could sum code other factors, too
+#contrasts(turkish$syllables) = -contr.sum(levels(turkish$syllables))
+#contrasts(turkish$place) = contr.sum(levels(turkish$place))
+#contrasts(turkish$coda) = contr.sum(levels(turkish$coda))
+
+# High, back, round are currently integers with 0,1. 
+#turkish$high = factor(turkish$high,levels=c(1,0))
+#contrasts(turkish$high) = contr.sum(levels(turkish$high))
+
+#turkish$back = factor(turkish$back,levels=c(1,0))
+#contrasts(turkish$back) = contr.sum(levels(turkish$back))
+
+#turkish[turkish$round==0,]$round = -1
+#turkish$round = factor(turkish$round,levels=c(1,0))
+#contrasts(turkish$round) = contr.sum(levels(turkish$round))
+
+```
+
+### A factor coding issue: size
+
+The size factor indicates whether an item is polysyllabic ("CVCVC") or monosyllabic, and if the latter, whether it's CVCC or CVC. So, there's really two different comparisons built into this factor. We could just sum code it to compare the various levels with each other, but it might make more sense to compare polysyllables with monosyllables (CVCVC vs CVCC/CVC), and then specifically cluster vs. singleton codas among monosyllables (CVCC vs. CVC).
+
+This type of comparison is known as Helmert coding. First, we examine simply what the coding looks like.
+
+```{r}
+contr.helmert(3)
+```
+
+Applied to the levels of the `size` factor, we see that we can use this to get one factor that tests the polysyllabicity effect (factor 2: positive coefficient = more alternation in polysyllables), and one factor that tests the cluster effect (factor 1: positive coefficient = more alternation with clusters).
+
+```{r}
+contr.helmert(c("CVC","CVCC","CVCVC"))
+```
+
+Applying this to the `size` factor would look like the following. (Note that BKN don't do this, so skip this if the goal is to replicate their analysis more closely)
+
+```{r}
+# Helmert code poly/mono and mono-C vs. mono-CC
+turkish$size = factor(turkish$size,levels=c("CVC","CVCC","CVCVC"))
+contrasts(turkish$size) = contr.helmert(levels(turkish$size))
+
+```
+
+# A logistic regression over both the experiment and lexicon
+
+```{r}
+# The following is like the lexical model that BKN present
+# (It takes a while to converge)
+turkish.lr = glmer(type ~ place*size*exp + exp*place*(high + back) + (1|item) + (1|participant),data=turkish,family=binomial(link="logit"),control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000)))
+summary(turkish.lr)
+
+# Focusing especially on the difference for vowel features between the experiment and the lexicon. The model that includes random slopes for both high and back is a singular fit, unfortunately, so at least including one vowel feature, under the theory that even one effect of vowels on voicing is unexpected and contrary to Becker et al's claims.
+turkish.lr2 = glmer(type ~ place*size*exp + exp*(high + back) + (1|item) + (1+high|participant),data=turkish,family=binomial(link="logit"),control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=100000)))
+summary(turkish.lr2)
+drop1(turkish.lr2,test="Chisq")
+```

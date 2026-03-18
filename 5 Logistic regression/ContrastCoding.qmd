@@ -1,0 +1,310 @@
+---
+title: "Contrast coding"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(car)
+
+#Schad et al define ginv2, which is basically just ginv() but printed nicely with names. (Requires library MASS)
+library(MASS)
+ginv2 <- function(x)
+  fractions(provideDimnames(ginv(x),
+                            base=dimnames(x)[2:1]))
+```
+
+# Some examples of contrast codings
+
+Schad et al. (2020) How to capitalize on a priori contrasts in linear (mixed) models: A tutorial. <https://www.sciencedirect.com/science/article/pii/S0749596X19300695>
+
+UCLA OARC: R Library Contrast Coding Systems for categorical variables. <https://stats.oarc.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/>
+
+As an example, we'll use a factor that codes the length of a root as:
+
+-   CVC (monosyllabic, ending in a singleton)
+
+-   CVCC (monosyllabic, ending in a cluster)
+
+-   CVCVC (polysyllabic, singleton or cluster)
+
+You might wonder why this is a single factor, rather than two orthogonal factors, mono- vs. polysyllabic, and final singleton vs. cluster. That's a good question, and if possible, it might be preferable in many cases. However, suppose the language simply doesn't allow clusters at the end of a polysyllabic root, or that the experimenters are only interested in the role of clusters in monosyllables for theoretical reasons. This is the case with Becker, Ketrez and Nevins (2011).
+
+We'll make a very simple data frame that will allow us to set the contrasts.
+
+```{r}
+data = data.frame(root_type = c("CVC","CVCC","CVCVC"))
+
+data$root_type = factor(data$root_type, levels=c("CVC","CVCC","CVCVC"))
+```
+
+For all contrast codings, we entertain hypotheses about the means of each level, µ~CVC~, µ~CVCC~, and µ~CVCVC~.
+
+## Treatment (dummy) coding
+
+In treatment/dummy coding, one level is taken as the \`reference' (baseline) level, and we test hypotheses about whether the means of other levels differ from the mean of the reference level. In the current example, let's take CVC as the reference level. The complete set of hypotheses under this coding are that:
+
+-   The mean of the reference level (CVC) is 0
+
+-   The difference between the reference level and CVCC is 0
+
+-   The difference between the reference level and CVCVC is 0
+
+In other words, the intercept is set to the mean of CVC:
+
+-   $
+    \beta_0 = \mu_{CVC}
+    $
+
+    -   Null hypothesis: $\beta_0 = 0$
+
+And the other levels express hypotheses about the difference between each mean and the mean of CVC:
+
+-   CVCC: $\beta_{CVCC} = \mu_{CVCC} - \mu_{CVC}$
+
+    -   null hypothesis: $\beta_{CVCC} = 0$
+
+-   CVCVC: $\beta_{CVCVC} = \mu_{CVCC} - \mu_{CVC}$
+
+    -   null hypothesis: $\beta_{CVCVC} = 0$
+
+We therefore have a hypothesis matrix that looks like this:
+
+| Coeff           | CVC | CVCC | CVCVC |
+|-----------------|-----|------|-------|
+| $\beta_0$       | 1   | 0    | 0     |
+| $\beta_{CVCC}$  | -1  | 1    | 0     |
+| $\beta_{CVCVC}$ | -1  | 0    | 1     |
+
+: Treatment coding hypothesis matrix
+
+We invert this matrix to get the contrast matrix.
+
+```{r}
+treatment.hypothesis = matrix(c(1,0,0, -1,1,0, -1,0,1), byrow=TRUE, ncol=3,dimnames=list(c("Intercept","Coeff_CVCC","Coeff_CVCVC"),c("CVC","CVCC","CVCVC")))
+treatment.hypothesis
+
+treatment.contrast = ginv2(treatment.hypothesis)
+treatment.contrast
+```
+
+This (without the intercept) is what R gives you for contr.treatment:
+
+```{r}
+contr.treatment(c("CVC","CVCC","CVCVC"))
+```
+
+## Sum (contrast) coding
+
+In sum coding, we entertain hypotheses about the mean of the levels. The intercept represents a hypothesis about mean of the mean values for each level, and the factor hypotheses represent hypotheses about means of specific levels w.r.t. the mean of all levels
+
+Intercept: the mean of means
+
+$$
+\beta_0 = \frac{\mu_{CVC} + \mu_{CVCC} + \mu_{CVCVC}}{3}
+$$
+
+-   Null hypothesis: $\beta_0 = 0$
+
+Factor levels: difference from the mean
+
+$$
+\beta_{CVCC} = \mu_{CVCC} - \frac{\mu_{CVC} + \mu_{CVCC} + \mu_{CVCVC}}{3} \\
+= \mu_{CVCC} - \frac{1}{3}\mu_{CVC} - \frac{1}{3}\mu_{CVCC} - \frac{1}{3}\mu_{CVCVC} \\
+= - \frac{1}{3}\mu_{CVC} + \frac{2}{3}\mu_{CVCC} - \frac{1}{3}\mu_{CVCC}
+$$
+
+-   Null hypothesis: $\beta_{CVCC} = 0$
+
+$$
+\beta_{CVCVC} = \mu_{CVCVC} - \frac{\mu_{CVC} + \mu_{CVCC} + \mu_{CVCC}}{3} \\
+= \mu_{CVCVC} - \frac{1}{3}\mu_{CVC} - \frac{1}{3}\mu_{CVCC} - \frac{1}{3}\mu_{CVCC} \\
+= - \frac{1}{3}\mu_{CVC} - \frac{1}{3}\mu_{CVCC} + \frac{2}{3}\mu_{CVCC}
+$$
+
+-   Null hypothesis: $\beta_{CVCVC} = 0$
+
+We therefore have a hypothesis matrix that looks like this:
+
+| Coeff           | CVC  | CVCC | CVCVC |
+|-----------------|------|------|-------|
+| $\beta_0$       | 1/3  | 1/3  | 1/3   |
+| $\beta_{CVCC}$  | -1/3 | 2/3  | -1/3  |
+| $\beta_{CVCVC}$ | -1/3 | -1/3 | 2/3   |
+
+: Sum coding hypothesis matrix
+
+```{r}
+sum.hypothesis = matrix(c(1/3,1/3,1/3, -1/3,2/3,-1/3, -1/3,-1/3,2/3), byrow=TRUE, ncol=3,dimnames=list(c("Intercept","Coeff_CVCC","Coeff_CVCVC"),c("CVC","CVCC","CVCVC")))
+sum.hypothesis
+
+sum.contrast = ginv2(sum.hypothesis)
+sum.contrast
+```
+
+This (without the intercept) is what R gives you for contr.sum, except that contr.sum creates hypotheses about the first N-1 levels, so we need to reorder the levels to have "CVC" be the one that is not directly examined here:
+
+```{r}
+contr.sum(c("CVCC","CVCVC","CVC"))
+# We can get names with the contr.Sum function from the 'car' package
+contr.Sum(c("CVCC","CVCVC","CVC"))
+```
+
+## Difference coding
+
+In difference coding, we entertain hypotheses about the differences between means of "adjacent" levels. The intercept represents a hypothesis about mean of means, and the factor hypotheses represent hypotheses about differences between means of adjacent levels.
+
+Intercept: the mean of means
+
+$$
+\beta_0 = \frac{\mu_{CVC} + \mu_{CVCC} + \mu_{CVCVC}}{3}
+$$
+
+-   Null hypothesis: $\beta_0 = 0$
+
+Factor levels: differences between adjacent levels
+
+-   $\beta_{CVCC} = \mu_{CVCC} - \mu_{CVC}$
+
+    -   Null hypothesis: $\beta_{CVCC} = 0$
+
+-   $\beta_{CVCVC} = \mu_{CVCVC} - \mu_{CVCC}$
+
+    -   Null hypothesis: $\beta_{CVCVC} = 0$
+
+We therefore have a hypothesis matrix that looks like this:
+
+| Coeff           | CVC | CVCC | CVCVC |
+|-----------------|-----|------|-------|
+| $\beta_0$       | 1   | 1    | 1     |
+| $\beta_{CVCC}$  | -1  | 1    | 0     |
+| $\beta_{CVCVC}$ | 0   | -1   | 1     |
+
+: Difference coding hypothesis matrix
+
+```{r}
+difference.hypothesis = matrix(c(1,1,1, -1,1,0, 0,-1,1), byrow=TRUE, ncol=3,dimnames=list(c("Intercept","Coeff_CVCC","Coeff_CVCVC"),c("CVC","CVCC","CVCVC")))
+difference.hypothesis
+
+difference.contrast = ginv2(difference.hypothesis)
+difference.contrast
+
+
+```
+
+This (without the intercept) is what R gives you for contr.sdif:
+
+```{r}
+contr.sdif(c("CVC","CVCC","CVCVC"))
+
+```
+
+## Helmert coding
+
+In Helmert coding, we entertain hypotheses about the mean of each level w.r.t. the grand mean of all subsequent levels. The intercept represents a hypothesis about mean of the mean values for each level.
+
+Intercept: the mean of means
+
+$$
+\beta_0 = \frac{\mu_{CVC} + \mu_{CVCC} + \mu_{CVCVC}}{3}
+$$
+
+-   Null hypothesis: $\beta_0 = 0$
+
+Factor levels: difference from the mean of subsequent levels. This is especially useful when one level differs from the rest in one way, and the others differ in another way. In the current example, CVCVC is polysyllabic while CVCC and CVC are monosyllabic, so that comparison represents the effect of polysyllabic vs. monosyllabic. The CVCC vs. CVC comparison represents final cluster vs. singleton in monosyllables.
+
+$$
+\beta_{CVCVC} = \mu_{CVCVC} - \frac{\mu_{CVC} + \mu_{CVCC}}{2} \\
+= -\frac{1}{2}\mu_{CVC} - \frac{1}{2}\mu_{CVCC} + \mu_{CVCVC} 
+$$
+
+-   Null hypothesis: $\beta_{CVCVC} = 0$
+
+$$
+\beta_{CVCC} = \mu_{CVCC} - \mu_{CVC}
+$$
+
+-   Null hypothesis: $\beta_{CVCC} = 0$
+
+We therefore have a hypothesis matrix that looks like this:
+
+| Coeff           | CVC  | CVCC | CVCVC |
+|-----------------|------|------|-------|
+| $\beta_0$       | 1/3  | 1/3  | 1/3   |
+| $\beta_{CVCC}$  | -1   | 1    | 0     |
+| $\beta_{CVCVC}$ | -1/2 | -1/2 | 1     |
+
+: Helmert coding hypothesis matrix
+
+```{r}
+helmert.hypothesis = matrix(c(1/3,1/3,1/3, -1,1,0, -1/2,-1/2,1), byrow=TRUE, ncol=3,dimnames=list(c("Intercept","Coeff_CVCC","Coeff_CVCVC"),c("CVC","CVCC","CVCVC")))
+helmert.hypothesis
+
+helmert.contrast = ginv2(helmert.hypothesis)
+helmert.contrast
+```
+
+This (without the intercept) is what R gives you for contr.helmert, except that contr.helmert (or its car equivalent, contr.Helmert) are scaled versions so that everything is an integer.
+
+```{r}
+contr.helmert(c("CVC","CVCC","CVCVC"))
+# We can get names with the contr.Helmert function from the 'car' package
+contr.Helmert(c("CVCC","CVCVC","CVC"))
+```
+
+## A custom coding
+
+Suppose we had a factor with 5 levels:
+
+-   A: intransitive verb
+
+-   B: transitive verb
+
+-   C: inanimate noun
+
+-   D: animate non-human noun
+
+-   E: human noun
+
+We could test simple hypotheses, like dummy coding against some arbitrarily chosen baseline, or sum coding to see how each compares to the mean. However, there's some structure to this set! There are verbs vs. nouns, and within verbs, there's transitive vs. intransitive. Within nouns, there's inanimate vs. animate (non-human and human), and then human vs. non-human animate nouns. This suggests a series of comparisons:
+
+Intercept: $\beta_0 = \frac{\mu_A + \mu_B + \mu_C + \mu_D + \mu_E}{5}$
+
+-   Null hypothesis: $\beta_0 = 0$
+
+A,B vs. C,D,E: $\beta_{N} = \frac{\mu_C + \mu_D + \mu_E}{3} - \frac{\mu_A + \mu_B}{2}$
+
+-   Null hypothesis: $\beta_{N} = 0$
+
+A vs. B: $\beta_{trans~vb} = \mu{B} - \mu{A}$
+
+-   Null hypothesis: $\beta_{trans~vb} = 0$
+
+C vs. D,E: $\beta_{anim} = \frac{\mu_D + \mu_E}{2} - \mu_C$
+
+-   Null hypothesis: $\beta_{anim} = 0$
+
+D vs. E: $\beta_{human} = \mu_E - \mu_D$
+
+-   Null hypothesis: $\beta_{human} = 0$
+
+We therefore have a hypothesis matrix that looks like this:
+
+| Coeff              | A    | B    | C   | D   | E   |
+|--------------------|------|------|-----|-----|-----|
+| $\beta_0$          | 1/5  | 1/5  | 1/5 | 1/5 | 1/5 |
+| $\beta_{N}$        | -1/2 | -1/2 | 1/3 | 1/3 | 1/3 |
+| $\beta_{trans~vb}$ | -1   | 1    | 0   | 0   | 0   |
+| $\beta_{anim}$     | 0    | 0    | -1  | 1/2 | 1/2 |
+| $\beta_{human}$    | 0    | 0    | 0   | -1  | 1   |
+
+: Custom coding hypothesis matrix
+
+```{r}
+custom.hypothesis = matrix(c(1/5,1/5,1/5,1/5,1/5, -1/2,-1/2,1/3,1/3,1/3, -1,1,0,0,0, 0,0,-1,1/2,1/2, 0,0,0,-1,1), byrow=TRUE, ncol=5,dimnames=list(c("Intercept","Coeff_N","Coeff_TransVb","Coeff_Anim", "Coeff_Human"),c("A","B","C","D","E")))
+custom.hypothesis
+
+custom.contrast = ginv2(custom.hypothesis)
+custom.contrast
+```
