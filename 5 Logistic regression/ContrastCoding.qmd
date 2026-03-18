@@ -53,9 +53,7 @@ In treatment/dummy coding, one level is taken as the \`reference' (baseline) lev
 
 In other words, the intercept is set to the mean of CVC:
 
--   $
-    \beta_0 = \mu_{CVC}
-    $
+-   \$ \beta*0 =* \mu{CVC} \$
 
     -   Null hypothesis: $\beta_0 = 0$
 
@@ -275,14 +273,17 @@ It is most intuitive to have the intercept be the mean of nouns vs. verbs: $\bet
 
 A,B vs. C,D,E: $\beta_{N} = \frac{\mu_C + \mu_D + \mu_E}{3} - \frac{\mu_A + \mu_B}{2}$
 
+-   Or, so that it represents the difference from the mean (rather than the difference between the means): $\beta_{N} = \frac{1}{2}(\frac{\mu_C + \mu_D + \mu_E}{3} - \frac{\mu_A + \mu_B}{2})$
 -   Null hypothesis: $\beta_{N} = 0$
 
 A vs. B: $\beta_{trans~vb} = \mu{B} - \mu{A}$
 
+-   Or, the difference from the mean: $\beta_{trans~vb} = \frac{1}{2}(\mu{B} - \mu{A})$
 -   Null hypothesis: $\beta_{trans~vb} = 0$
 
 C vs. D,E: $\beta_{anim} = \frac{\mu_D + \mu_E}{2} - \mu_C$
 
+-   Or, the difference from the mean: $\beta_{anim} = \frac{1}{2}(\frac{\mu_D + \mu_E}{2} - \mu_C)$
 -   Null hypothesis: $\beta_{anim} = 0$
 
 D vs. E: $\beta_{human} = \mu_E - \mu_D$
@@ -291,19 +292,19 @@ D vs. E: $\beta_{human} = \mu_E - \mu_D$
 
 We therefore have a hypothesis matrix that looks like this:
 
-| Coeff              | A    | B    | C   | D   | E   |
-|--------------------|------|------|-----|-----|-----|
-| $\beta_0$          | 1/4  | 1/4  | 1/6 | 1/6 | 1/6 |
-| $\beta_{N}$        | -1/2 | -1/2 | 1/3 | 1/3 | 1/3 |
-| $\beta_{trans~vb}$ | -1   | 1    | 0   | 0   | 0   |
-| $\beta_{anim}$     | 0    | 0    | -1  | 1/2 | 1/2 |
-| $\beta_{human}$    | 0    | 0    | 0   | -1  | 1   |
+| Coeff              | A    | B    | C    | D    | E   |
+|--------------------|------|------|------|------|-----|
+| $\beta_0$          | 1/4  | 1/4  | 1/6  | 1/6  | 1/6 |
+| $\beta_{N}$        | -1/4 | -1/4 | 1/6  | 1/6  | 1/6 |
+| $\beta_{trans~vb}$ | -1/2 | 1/2  | 0    | 0    | 0   |
+| $\beta_{anim}$     | 0    | 0    | -1/2 | 1/4  | 1/4 |
+| $\beta_{human}$    | 0    | 0    | 0    | -1/2 | 1/2 |
 
 : Custom coding hypothesis matrix
 
 ```{r}
 # Or the custom intercept:
-custom.hypothesis = matrix(c(1/4,1/4,1/6,1/6,1/6, -1/2,-1/2,1/3,1/3,1/3, -1,1,0,0,0, 0,0,-1,1/2,1/2, 0,0,0,-1,1), byrow=TRUE, ncol=5,dimnames=list(c("Intercept","Coeff_N","Coeff_TransVb","Coeff_Anim", "Coeff_Human"),c("A","B","C","D","E")))
+custom.hypothesis = matrix(c(1/4,1/4,1/6,1/6,1/6, -1/4,-1/4,1/6,1/6,1/6, -1/2,1/2,0,0,0, 0,0,-1/2,1/4,1/4, 0,0,0,-1/2,1/2), byrow=TRUE, ncol=5,dimnames=list(c("Intercept","Coeff_N","Coeff_TransVb","Coeff_Anim", "Coeff_Human"),c("A","B","C","D","E")))
 
 custom.hypothesis
 
