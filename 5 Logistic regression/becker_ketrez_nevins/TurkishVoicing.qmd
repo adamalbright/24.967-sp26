@@ -263,7 +263,7 @@ First, we read in the experimental data
 bkn.exp = read.table("experiment.csv",sep="\t",quote="",header=TRUE)
 ```
 
-Now we set up the factors. #hithere
+Now we set up the factors.
 
 ```{r}
 # Choice is 1 for voiced (alternating) and 0 for voiceless (non-alternating)
