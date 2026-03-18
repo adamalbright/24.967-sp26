@@ -269,7 +269,7 @@ Suppose we had a factor with 5 levels:
 
 We could test simple hypotheses, like dummy coding against some arbitrarily chosen baseline, or sum coding to see how each compares to the mean. However, there's some structure to this set! There are verbs vs. nouns, and within verbs, there's transitive vs. intransitive. Within nouns, there's inanimate vs. animate (non-human and human), and then human vs. non-human animate nouns. This suggests a series of comparisons:
 
-Intercept: $\beta_0 = \frac{\mu_A + \mu_B + \mu_C + \mu_D + \mu_E}{5}$
+It is most intuitive to have the intercept be the mean of nouns vs. verbs: $\beta_0 = \frac{1}{2}(\frac{\mu_A + \mu_B}{2}) + \frac{1}{2}(\frac{\mu_C + \mu_D + \mu_E}{3})$
 
 -   Null hypothesis: $\beta_0 = 0$
 
@@ -293,7 +293,7 @@ We therefore have a hypothesis matrix that looks like this:
 
 | Coeff              | A    | B    | C   | D   | E   |
 |--------------------|------|------|-----|-----|-----|
-| $\beta_0$          | 1/5  | 1/5  | 1/5 | 1/5 | 1/5 |
+| $\beta_0$          | 1/4  | 1/4  | 1/6 | 1/6 | 1/6 |
 | $\beta_{N}$        | -1/2 | -1/2 | 1/3 | 1/3 | 1/3 |
 | $\beta_{trans~vb}$ | -1   | 1    | 0   | 0   | 0   |
 | $\beta_{anim}$     | 0    | 0    | -1  | 1/2 | 1/2 |
@@ -302,9 +302,65 @@ We therefore have a hypothesis matrix that looks like this:
 : Custom coding hypothesis matrix
 
 ```{r}
-custom.hypothesis = matrix(c(1/5,1/5,1/5,1/5,1/5, -1/2,-1/2,1/3,1/3,1/3, -1,1,0,0,0, 0,0,-1,1/2,1/2, 0,0,0,-1,1), byrow=TRUE, ncol=5,dimnames=list(c("Intercept","Coeff_N","Coeff_TransVb","Coeff_Anim", "Coeff_Human"),c("A","B","C","D","E")))
+# Or the custom intercept:
+custom.hypothesis = matrix(c(1/4,1/4,1/6,1/6,1/6, -1/2,-1/2,1/3,1/3,1/3, -1,1,0,0,0, 0,0,-1,1/2,1/2, 0,0,0,-1,1), byrow=TRUE, ncol=5,dimnames=list(c("Intercept","Coeff_N","Coeff_TransVb","Coeff_Anim", "Coeff_Human"),c("A","B","C","D","E")))
+
 custom.hypothesis
 
 custom.contrast = ginv2(custom.hypothesis)
 custom.contrast
+```
+
+Let's check out how this custom coding works, with a simple linear regression. We'll create data in 5 groups.
+
+```{r}
+set.seed(123)  # for reproducibility
+
+# Number of observations per group
+n_per_group <- 20
+
+# Group labels
+groups <- rep(c("intransitive verb", "transitive verb", "inanimate noun", "animate non-human noun", "human noun"), each = n_per_group)
+
+# Means for each group
+means <- c(intransitive = 24, transitive = 36, inanimate = 55, animate = 75, human = 80)
+
+# Standard deviation (you can adjust this)
+sd_value <- 5
+
+# Generate data
+values <- c(
+  rnorm(n_per_group, mean = means["intransitive"], sd = sd_value),
+  rnorm(n_per_group, mean = means["transitive"], sd = sd_value),
+  rnorm(n_per_group, mean = means["inanimate"], sd = sd_value),
+  rnorm(n_per_group, mean = means["animate"], sd = sd_value),
+  rnorm(n_per_group, mean = means["human"], sd = sd_value)
+)
+
+# Create data frame
+df <- data.frame(
+  group = groups,
+  value = values
+)
+
+# View first few rows
+head(df)
+
+# Check group means
+means = aggregate(value ~ group, data = df, mean)
+mean(means$value)
+```
+
+```{r}
+# Set up the coding for 'group'
+df$group = factor(df$group,levels=c("intransitive verb", "transitive verb", "inanimate noun", "animate non-human noun", "human noun"))
+
+contrasts(df$group) = custom.contrast[,2:5]
+```
+
+Now use this custom coding for a linear model of values for the 'group' levels.
+
+```{r}
+custom_coding.lr = lm(value ~ group, data=df)
+summary(custom_coding.lr)
 ```
