@@ -53,7 +53,7 @@ In treatment/dummy coding, one level is taken as the \`reference' (baseline) lev
 
 In other words, the intercept is set to the mean of CVC:
 
--   \$ \beta*0 =* \mu{CVC} \$
+-   \$ \beta*0 =\* \mu{CVC} \$
 
     -   Null hypothesis: $\beta_0 = 0$
 
@@ -365,3 +365,99 @@ Now use this custom coding for a linear model of values for the 'group' levels.
 custom_coding.lr = lm(value ~ group, data=df)
 summary(custom_coding.lr)
 ```
+
+# **Why do we invert the hypothesis matrix?**
+
+The hypothesis matrix relates cell means to coefficients (betas).
+
+Repeating the example of treatment coding from above:
+
+the intercept is set to the mean of CVC:
+
+-   $\beta_0 = \mu_{CVC}$
+
+    -   Null hypothesis: $\beta_0 = 0$
+
+And the other levels express hypotheses about the difference between each mean and the mean of CVC:
+
+-   CVCC: $\beta_{CVCC} = \mu_{CVCC} - \mu_{CVC}$
+
+    -   null hypothesis: $\beta_{CVCC} = 0$
+
+-   CVCVC: $\beta_{CVCVC} = \mu_{CVCC} - \mu_{CVC}$
+
+    -   null hypothesis: $\beta_{CVCVC} = 0$
+
+We therefore have a hypothesis matrix that looks like this:
+
+| Coeff           | CVC | CVCC | CVCVC |
+|-----------------|-----|------|-------|
+| $\beta_0$       | 1   | 0    | 0     |
+| $\beta_{CVCC}$  | -1  | 1    | 0     |
+| $\beta_{CVCVC}$ | -1  | 0    | 1     |
+
+: This matrix relates cell means to coefficients:
+
+$$
+\begin{pmatrix}
+1 & 0 & 0 \\
+-1 & 1 & 0 \\
+-1 & 0 & 1
+\end{pmatrix}
+\begin{pmatrix}
+\mu_{CVC} \\
+\mu_{CVCC} \\
+\mu_{CVCVC}
+\end{pmatrix}
+=
+\begin{pmatrix}
+\mu_{CVC} \\
+-\mu_{CVC} + \mu_{CVCC} \\
+-\mu_{CVC} + \mu_{CVCVC}
+\end{pmatrix}
+=
+\begin{pmatrix}
+\beta_0 \\
+\beta_{CVCC} \\
+\beta_{CVCVC}
+\end{pmatrix}
+$$
+
+So if we multiply both sides of the equation by the inverse of the hypothesis matrix, we get:
+
+$$
+\begin{pmatrix}
+\mu_0 \\
+\mu_{CVCC} \\
+\mu_{CVCVC}
+\end{pmatrix}
+=
+\begin{pmatrix}
+1 & 0 & 0 \\
+-1 & 1 & 0 \\
+-1 & 0 & 1
+\end{pmatrix}^{-1}
+\begin{pmatrix}
+\beta_0 \\
+\beta_{CVCC} \\
+\beta_{CVCVC}
+\end{pmatrix}
+$$
+
+So the inverse of the hypothesis matrix is the treatment coding matrix, with 1's added in the first column for the intercept
+
+$$
+\begin{pmatrix}
+1 & 0 & 0 \\
+-1 & 1 & 0 \\
+-1 & 0 & 1
+\end{pmatrix}^{-1}
+=
+\begin{pmatrix}
+1 & 0 & 0 \\
+1 & 1 & 0 \\
+1 & 0 & 1
+\end{pmatrix}
+$$
+
+As explained in Schad et al, we use the generalized matrix inverse, ginv(), in case the hypothesis matrix is not square.
