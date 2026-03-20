@@ -423,7 +423,7 @@ $$
 \end{pmatrix}
 $$
 
-So if we multiply both sides of the equation by the inverse of the hypothesis matrix, we get:
+So if we multiply both sides of the equation by the inverse of the hypothesis matrix, we get an equation that expresses cell means as functions of the coefficients:
 
 $$
 \begin{pmatrix}
@@ -444,7 +444,7 @@ $$
 \end{pmatrix}
 $$
 
-So the inverse of the hypothesis matrix is the treatment coding matrix, with 1's added in the first column for the intercept
+In other words, the inverse of the hypothesis matrix is the treatment coding matrix: it specifies the dummy variables that need to be multiplied by the bet coefficients to model the means. Looking at the inverse of the hypothesis matrix, we see it is indeed the contrast coding matrix, with 1's added in the first column for the intercept:
 
 $$
 \begin{pmatrix}
