@@ -53,7 +53,7 @@ In treatment/dummy coding, one level is taken as the \`reference' (baseline) lev
 
 In other words, the intercept is set to the mean of CVC:
 
--   \$ \beta*0 =\* \mu{CVC} \$
+-   $\beta\_0 = \mu{CVC}$
 
     -   Null hypothesis: $\beta_0 = 0$
 
