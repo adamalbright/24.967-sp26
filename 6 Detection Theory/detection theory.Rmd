@@ -1,0 +1,56 @@
+---
+title: "Detection Theory"
+output: html_document
+date: "2026-03-31"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyr)
+```
+
+## Detection theoretic analysis of Redford & Diehl data - th vs. f
+
+read in data and calculate d' for th vs. f in a specified context using qnorm()
+
+```{r}
+rd = read.csv("redford-diehl-exp1.csv")
+
+thf = filter(rd, (stimulus == "th"|stimulus == "f") & (response == "th"|response == "f"))
+thf$stimulus = factor(thf$stimulus)
+thf$response = factor(thf$response)
+thf$context = factor(thf$context)
+
+# set context
+levels(thf$context)
+cont = "C#V"
+
+H = thf[thf$stimulus == "th" & thf$response == "th" & thf$context == cont,"count"]/sum(thf[thf$stimulus == "th" & thf$context == cont,"count"])
+FA = thf[thf$stimulus == "f" & thf$response == "th" & thf$context == cont,"count"]/sum(thf[thf$stimulus == "f" & thf$context == cont,"count"])
+
+# calculate d'
+qnorm(H)-qnorm(FA)
+# and c
+-0.5*(qnorm(H)+qnorm(FA))
+
+```
+
+## Fit Detection Theory model using probit regression
+
+```{r}
+# reshape thf from long to wide
+thf_wide = pivot_wider(thf, names_from = response, values_from = count)
+
+# specify target "th" as first level of stimulus factor
+thf_wide$stimulus = factor(thf_wide$stimulus, levels = c("th", "f"))
+# specify C#V as first level of context
+thf_wide$context = factor(thf_wide$context, levels = c("C#V", "CV", "C#C"))
+
+# code stimulus as +0.5 th, -0.5 f
+contrasts(thf_wide$stimulus) = 0.5*contr.sum(levels(thf_wide$stimulus))
+
+# fit probit regression
+thf_probit = glm(cbind(th,f)~stimulus*context, data = thf_wide, family=binomial(link="probit"))
+summary(thf_probit)
+```
