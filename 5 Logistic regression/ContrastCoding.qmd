@@ -279,17 +279,17 @@ A,B vs. C,D,E: $\beta_{N} = \frac{\mu_C + \mu_D + \mu_E}{3} - \frac{1}{2}(\frac{
 
 A vs. B: $\beta_{trans~vb} = \mu{B} - \mu{A}$
 
--   Or, the difference from the mean: $\beta_{trans~vb} = \frac{1}{2}(\mu{B} - \mu{A})$
+-   Or, the difference from the mean: $\beta_{trans~vb} = \mu_B - \frac{\mu_A + \mu_B}{2} = \frac{1}{2}\mu_A - \frac{1}{2}\mu_B$
 -   Null hypothesis: $\beta_{trans~vb} = 0$
 
 C vs. D,E: $\beta_{anim} = \frac{\mu_D + \mu_E}{2} - \mu_C$
 
--   Or, the difference from the mean: $\beta_{anim} = \frac{1}{2}(\frac{\mu_D + \mu_E}{2} - \mu_C)$
+-   Or, the difference from the mean: $\beta_{anim} = \frac{1}{2}(\mu_C + \frac{\mu_D + \mu_E}{2}) - \mu_C = -\frac{1}{2}\mu_C + \frac{1}{4}\mu_D + \frac{1}{4}\mu_E$
 -   Null hypothesis: $\beta_{anim} = 0$
 
 D vs. E: $\beta_{human} = \mu_E - \mu_D$
 
--   Or, the difference from the mean: $\beta_{human} = \frac{1}{2}(\mu_E - \mu_D)$
+-   Or, the difference from the mean: $\beta_{human} = \mu_E - \frac{\mu_D + \mu_E}{2} = -\frac{1}{2}\mu_D + \frac{1}{2}\mu_E$
 -   Null hypothesis: $\beta_{human} = 0$
 
 We therefore have a hypothesis matrix that looks like this:
