@@ -24,7 +24,7 @@ thf$context = factor(thf$context)
 
 # set context
 levels(thf$context)
-cont = "C#V"
+cont = "C#C"
 
 H = thf[thf$stimulus == "th" & thf$response == "th" & thf$context == cont,"count"]/sum(thf[thf$stimulus == "th" & thf$context == cont,"count"])
 FA = thf[thf$stimulus == "f" & thf$response == "th" & thf$context == cont,"count"]/sum(thf[thf$stimulus == "f" & thf$context == cont,"count"])
@@ -44,8 +44,8 @@ thf_wide = pivot_wider(thf, names_from = response, values_from = count)
 
 # specify target "th" as first level of stimulus factor
 thf_wide$stimulus = factor(thf_wide$stimulus, levels = c("th", "f"))
-# specify C#V as first level of context
-thf_wide$context = factor(thf_wide$context, levels = c("C#V", "CV", "C#C"))
+# specify C#C as first level of context
+thf_wide$context = factor(thf_wide$context, levels = c("C#C", "CV", "C#V"))
 
 # code stimulus as +0.5 th, -0.5 f
 contrasts(thf_wide$stimulus) = 0.5*contr.sum(levels(thf_wide$stimulus))
