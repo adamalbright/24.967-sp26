@@ -1,0 +1,181 @@
+---
+title: "BCM"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+```
+
+## Fitting Biased Choice Models as log-linear models
+
+Read in the Redford & Diehl confusion matrix data
+
+```{r}
+rd = read.csv("redford-diehl-exp1.csv")
+
+# Make C#V the baseline context:
+rd$context = factor(rdfull$context, levels=c("C#V","CV","C#C"))
+# Declare stimulus and response as factors
+rd$stimulus = factor(rd$stimulus)
+rd$response = factor(rd$response)
+```
+
+For initial analyses, we will only look at the data involving stops /p, t, k/
+
+```{r}
+stops = c("p","t","k")
+rdstops = filter(rdfull, stimulus %in% stops & response %in% stops)
+rdstops
+
+# reset levels of stimulus and response
+rdstops$response = factor(rdstops$response)
+rdstops$stimulus = factor(rdstops$stimulus)
+```
+
+## Generating distance dummy variables
+
+To fit a BCM, we need to generate dummy variable to encode the relationships required to fit distances - i.e. dummy variables for each pair of non-identical stimulus categories that have value 1 where stimulus and response involve that pair of categories (in either order).
+
+The following function automatically generates a matrix, d, of dummy variables for a data set. The arguments are the dataframe and the names of the variable encoding stimulus category and the name of the variable encoding response category (by default, "stimulus" and "response")
+
+```{r}
+distmatrix=function(data, stimulus_var="stimulus", response_var="response"){
+# 'cats' is the list of categories
+cats = levels(data[,stimulus_var])
+n = length(cats)
+# initialize distance matrix, d, as an array of 0s, with the same number of rows as data, 
+# and enough columns for the dummy distance variables
+d = array(0,dim=c(length(data[,stimulus_var]),0.5*n*(n-1)))
+# initialize a vector to hold the names of the dummy distance variables
+dvars = rep.int(0,0.5*n*(n-1))
+# initialize col, to keep track of which column of d is currently being populated
+col=0
+# Main loop: Enumerate all the pairs of distinct stimulus categories, and define a column of d for each
+# loop through the cats list from first to penultimate item on the list.
+for (i in 1:(n-1)){
+  # cat1 is the ith category
+  cat1=cats[i]
+  # for each cat1, loop through the cats list from the next category to the end of the list
+  for (j in (i+1):n){
+    # increment col, the current column of d
+    col=col+1
+    # cat2 is the jth category
+    cat2=cats[j]
+    # the name of the current column is the concatenation of cat1 and cat2 joined by a period
+    dvars[col]=paste(cat1,cat2,sep=".")
+    # for each row in the dataframe, the cat1cat2 distance variable has value 1 if stimulus is cat1 and response is cat2
+    # or stimulus is cat2 and response is cat1. Otherwise the value remains at 0.
+    for (i in 1:length(data[,stimulus_var])){
+        if((data[i,stimulus_var]==cat1 & data[i,response_var]==cat2)|(data[i,stimulus_var]==cat2 & data[i,response_var]==cat1)){
+          d[i,col]=1}
+    }
+  }
+}
+# set the column names of d to the names stored in dvars
+colnames(d)=dvars
+return(d)}
+```
+
+### Fit a log-linear BCM to data for stops in the CV context
+
+```{r}
+# generate d matrix
+d = distmatrix(subset(rdstops, context=="CV"), stimulus_var = "stimulus", response_var = "response")
+# look at d
+d
+# fit model
+rdstopmodelCV=glm(count~stimulus+response+d,data=subset(rdstops, context=="CV"),family=poisson(link="log"))
+summary(rdstopmodelCV)
+```
+
+### Recover bias parameters from the model coefficients
+
+```{r}
+# look at the coefficients
+coef(rdstopmodelCV)
+
+# extract the response coefficients - k is the base category, so the coefficient for b_k is 0
+bs = c(coef(rdstopmodelCV)[4:5],0)
+names(bs) = c("bp", "bt", "bk")
+
+# exponentiate the coefficients and divide by the sum of the exponentiated coefficients
+exp(bs)/sum(exp(bs))
+
+```
+
+## Fit BCM to stops in all contexts
+
+The basic BCM, stimulus+response+d, can be interacted with other factors to model variation in BCM parameters across conditions
+
+```{r}
+# generate d matrix
+d = distmatrix(rdstops, stimulus_var = "stimulus", response_var = "response")
+# fit model
+rdstopmodel=glm(count~context*(stimulus+response+d),data=rdstops,family=poisson(link="log"))
+summary(rdstopmodel)
+```
+
+## Test hypotheses comparing distance coefficients
+
+To test significance of differences between distance parameters, one strategy is to compare to a reduced model in which the relevant distance parameters are collapsed
+
+E.g. Test the hypothesis that d_kp != d_kt, null hypothesis d_kp = d_kt
+
+```{r}
+# Manipulate d to test hypotheses about differences between distance parameters
+# Starting from d matrix constructed for the stops data, rd, define d2 with a 
+# dummy distance variable which has 1's for pairs p-t and p-k
+d2 = d
+# replace kp with the sum of kp and kt
+d2[,"k.p"]=d[,"k.p"]+d[,"k.t"]
+# rename kp as kpt - the name of the new dummy variable
+colnames(d2)[1]="k.pt"
+# delete kt, column 2
+d2=d2[,-2]
+
+# fit reduced model with d2
+rdstopmodel2=glm(count~context*(stimulus+response+d2),data=rdstops,family=poisson(link="log"))
+
+# test significance of difference using LRT
+anova(rdstopmodel2,rdstopmodel,test="Chisq")
+```
+
+## Test hypotheses about bias parameters
+
+This can be achieved via coding of the response factor.
+
+Treatment coding (above) compares each bias parameter to the base level ("k" above)
+
+Successive difference coding (from the MASS package) to compare two pairs of bias parameters
+
+```{r}
+library(MASS)
+
+contrasts(rdstops$response) = contr.sdif(levels(rdstops$response))
+contrasts(rdstops$response)
+
+rdstopmodel=glm(count~context*(stimulus+response+d),data=rdstops,family=poisson(link="log"))
+summary(rdstopmodel)
+
+```
+
+## Analyze all of the consonants in a single model
+
+```{r}
+# generate d matrix
+d = distmatrix(rd, stimulus_var = "stimulus", response_var = "response")
+# Fit model to all data from all contexts
+rdfullmodel=glm(count~context*(stimulus+response+d), data=rd,family=poisson(link="log"))
+summary(rdfullmodel)
+```
+
+Why are some distance coefficients very large but not significantly different from 0? E.g. dk.sh, dp.sh? Because there are 0's in the confusion matrix:
+
+```{r}
+filter(rd, stimulus == "k" & response == "sh" | stimulus == "sh" & response =="k")
+filter(rd, stimulus == "p" & response == "sh" | stimulus == "sh" & response =="p")
+filter(rd, stimulus == "t" & response == "sh" | stimulus == "sh" & response =="t")
+
+```
