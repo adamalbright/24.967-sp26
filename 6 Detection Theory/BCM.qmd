@@ -16,7 +16,7 @@ Read in the Redford & Diehl confusion matrix data
 rd = read_csv("redford-diehl-exp1.csv")
 
 # Make C#V the baseline context:
-rd$context = factor(rdfull$context, levels=c("C#V","CV","C#C"))
+rd$context = factor(rd$context, levels=c("C#V","CV","C#C"))
 # Declare stimulus and response as factors
 rd$stimulus = factor(rd$stimulus)
 rd$response = factor(rd$response)
