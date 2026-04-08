@@ -26,7 +26,7 @@ For initial analyses, we will only look at the data involving stops /p, t, k/
 
 ```{r}
 stops = c("p","t","k")
-rdstops = filter(rdfull, stimulus %in% stops & response %in% stops)
+rdstops = filter(rd, stimulus %in% stops & response %in% stops)
 rdstops
 
 # reset levels of stimulus and response
@@ -167,8 +167,8 @@ summary(rdstopmodel)
 # generate d matrix
 d = distmatrix(rd, stimulus_var = "stimulus", response_var = "response")
 # Fit model to all data from all contexts
-rdfullmodel=glm(count~context*(stimulus+response+d), data=rd,family=poisson(link="log"))
-summary(rdfullmodel)
+rdmodel=glm(count~context*(stimulus+response+d), data=rd,family=poisson(link="log"))
+summary(rdmodel)
 ```
 
 Why are some distance coefficients very large but not significantly different from 0? E.g. dk.sh, dp.sh? Because there are 0's in the confusion matrix:
