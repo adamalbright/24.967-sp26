@@ -1,0 +1,323 @@
+---
+title: "logistic regression"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+```
+
+# Binary logistic/probit regression with continuous predictor variables
+
+## Example: Identification of a VOT continuum
+
+```{r}
+vot = read_csv("VOT.csv")
+```
+
+Fit logistic regression and probit regression models
+
+```{r}
+vot.lr = glm(cbind(ka,ga)~VOT,data=vot,family=binomial(link="logit"))
+summary(vot.lr)
+
+vot.dt = glm(cbind(ka,ga)~VOT,data=vot,family=binomial(link="probit"))
+summary(vot.dt)
+```
+
+Plot the data and logistic and probit fits
+
+```{r}
+# add fitted values to data frame
+#extract intercept and slope from LR model
+lri=coef(vot.lr)[1]
+lrs=coef(vot.lr)[2]
+
+#extract intercept and slope from DT model
+dti=coef(vot.dt)[1]
+dts=coef(vot.dt)[2]
+
+vot_plot = ggplot(vot, 
+  aes(
+    x = VOT,
+    y = ka/100
+  )) +
+  geom_point() +
+  geom_function(fun = \(x) 1/(1+exp(-(lrs*x+lri))),
+    color = "blue") +
+  geom_function(fun = \(x) pnorm(dts*x+dti),
+    color = "red") +
+  labs(y = "proportion of k responses", x = "VOT (ms)") +
+  theme_classic(base_size = 16)
+ 
+show(vot_plot)
+
+```
+
+Plot logit/probit of response probabilities.
+
+If the models are good, these should yield straight lines
+
+```{r}
+logit_vot_plot = ggplot(vot,
+  aes(x = VOT, y = log(ka/(100-ka))),
+  ) +
+  geom_point() +
+  geom_abline(intercept = lri, slope = lrs) +
+  labs(x = "VOT ms", y = "logit(p(ka))") +
+  theme_classic(base_size = 16)
+
+show(logit_vot_plot) 
+
+probit_vot_plot= ggplot(vot,
+  aes(x = VOT, y = qnorm(ka/100)),
+  ) +
+  geom_point() +
+  geom_abline(intercept = dti, slope = dts) +
+  labs(x = "VOT ms", y = "probit(p(ka))") +
+  theme_classic(base_size = 16)
+
+show(probit_vot_plot)
+```
+
+## Binary logistic regression with multiple predictor variables
+
+Example: Identification of VOT \* f0 continuum. Data from Whalen
+
+```{r}
+# read in Whalen data
+votf0 = read_csv("whalenVOTf0.csv")
+```
+
+Fit a logistic regression model with two independent variables
+
+```{r}
+votf0lrm = glm(cbind(p,b)~VOT+f0, data=votf0, family=binomial(link="logit"))
+summary(votf0lrm)
+```
+
+Plot the data and fitted identification functions
+
+```{r}
+# extract model coefficients
+intercept = votf0lrm$coef[1]
+VOTslope = votf0lrm$coef[2]
+f0slope = votf0lrm$coef[3]
+
+# plot identification functions over data
+# I couldn't work out how to plot all of the model curves in ggplot2 so this is base R
+
+plot(p~VOT, data = votf0, col=round(f0/10), ylab = "%voiceless responses")
+for (f in c(98,108,114,120,130)){
+  curve(100/(1+exp(-(VOTslope*x+f0slope*f+intercept))),col=round(f/10),add=TRUE)
+}
+
+plot(log((p/100)/((1-p/100)))~VOT, data = votf0, col=round(f0/10), ylab="logit(p(voiceless))")
+for (f in c(98,108,114,120,130)){
+  curve(VOTslope*x+f0slope*f+intercept,col=round(f/10), add=TRUE)
+}
+
+```
+
+## Adding inattention parameters to identification functions
+
+Fit of the logistic regression model to the Whalen data is poor because the voiceless responses do not asymptote to 1 at high VOT (and may not asymptote to 0 at low VOT)
+
+-   Simple logistic/probit regression models predict that identification probabilities should asymptote to 0/1 at extreme values of the linear model
+
+-   Asymptotes other than 0 and 1 can be interpreted in terms of occasional failure by subjects to attend to the stimulus
+
+    -   There is a probability $p_i$ that the stimulus is not attended to on a given trial
+
+    -   When the subject does not attend to the stimulus, they guess its identity with fixed response probabilities
+
+    -   e.g. in identification of a \[k-g\] continuum, the probability of guessing 'k' on an unattended trial is $p_k$
+
+-    Regular detection theory model: $z(p(k)) = \beta_0 + \beta_1 VOT$
+
+    -   $\phi (p(k))=\beta_0+\beta_1VOT$
+
+-   With inattention parameters $p(k) = p_i p_k + (1-p_i)(\beta_0 + \beta_1 VOT)$
+
+This model can be fit using the *psyphy* package:
+
+-   Use function *psyfun.2asym* with link function *probit.2asym* or *logit.2asym*
+
+```{r}
+library(psyphy)
+
+pf = psyfun.2asym(cbind(p,b)~f0+VOT,data=votf0,link=probit.2asym)
+
+summary(pf)
+
+int = pf$coef["(Intercept)"]
+betaf0 = pf$coef["f0"]
+betaVOT = pf$coef["VOT"]
+lambda = pf$lambda
+gamma = pf$gam
+```
+
+Note that coefficient of VOT changes substantially when inattention parameters are added
+
+This function actually fits a model of the form
+
+$P(x) = \gamma + ( 1 - \gamma - \lambda )f(x)$
+
+-   where $f(x)$ is the logit or probit model
+
+-   so $\gamma$ is the lower asymptote and $1-\lambda$ is the upper asymptote
+
+    -   $\gamma = p_i p_k$ and $\gamma + \lambda = p_i$
+
+```{r}
+int = pf$coef["(Intercept)"]
+betaf0 = pf$coef["f0"]
+betaVOT = pf$coef["VOT"]
+lambda = pf$lambda
+gamma = pf$gam
+
+# p_i
+gamma + lambda
+# p_k
+gamma/(gamma + lambda)
+
+plot(p/100~VOT, data = votf0, col=round(f0/10))
+for (f in c(98,108,114,120,130)){
+  curve((1-lambda-gamma)*pnorm(int+betaf0*f+betaVOT*x)+gamma,col=round(f/10), add=TRUE)
+}
+```
+
+# Multinomial logistic regression
+
+Example: Identification of a VOT continuum with three categories b, p, ph, by Thai listeners (Lisker & Abramson 1970)
+
+```{r}
+# Read in the Lisker & Abramson Thai data
+thai = read_csv("thai.csv")
+
+# plot the data
+thai_plot = ggplot(thai,
+  aes(
+    x = VOT,
+    y = p/(b+p+ph)
+  )) +
+  geom_point(position = "jitter") +
+  geom_point(aes(
+    x = VOT,
+    y = b/(b+p+ph),
+  ), color = "red") +
+  geom_point(aes(
+    x = VOT,
+    y = ph/(b+p+ph)
+  ), color = "blue") +
+  labs(x = "VOT (ms)", y = "response proportion") +
+  theme_classic(base_size = 16)
+
+show(thai_plot)
+
+```
+
+## vglm
+
+fit multinomial logistic regression model to the Thai data using vglm from the VGAM package
+
+```{r}
+library(VGAM)
+
+# multinomial logistic regression with VGAM
+# base category is the last
+thai.vglm = vglm(cbind(b, ph, p) ~ VOT, data=thai, family = multinomial())
+summary(thai.vglm)
+```
+
+Add model fitted curves to the plot
+
+```{r}
+#extract intercepts and slopes from MLR model
+intb=coef(thai.vglm)[1]
+slopeb=coef(thai.vglm)[3]
+
+intph=coef(thai.vglm)[2]
+slopeph=coef(thai.vglm)[4]
+
+thai_plot = thai_plot +
+  geom_function(fun = \(x) exp(intb+slopeb*x)/(exp(intb+slopeb*x)+1+exp(intph+slopeph*x)), color = "red") +
+  geom_function(fun = \(x) exp(intph+slopeph*x)/(exp(intb+slopeb*x)+1+exp(intph+slopeph*x)), col = "blue") +
+  geom_function(fun = \(x) 1/(exp(intb+slopeb*x)+1+exp(intph+slopeph*x)))
+
+show(thai_plot)
+```
+
+```{r}
+# plot log odds and logit models
+thai_logit_plot = ggplot(thai,
+  aes(
+    x = VOT,
+    y = log(b/p)
+  )) +
+  geom_point(color = "red") +
+  geom_point(aes(
+    x = VOT,
+    y = log(p/p)
+  )) +
+  geom_point(aes(
+    x = VOT,
+    y = log(ph/p)
+  ), color = "blue") +
+  theme_classic(base_size = 16)
+
+show(thai_logit_plot)
+
+# add model lines
+thai_logit_plot = thai_logit_plot +
+  geom_abline(intercept = intb, slope = slopeb, color = "red") +
+  geom_abline(intercept = intph, slope = slopeph, color = "blue") +
+  geom_hline(yintercept = 0)
+
+show(thai_logit_plot)
+
+
+
+```
+
+## nnet
+
+fit multinomial logistic regression model to the Thai data using *multinom* from the *nnet* package
+
+```{r}
+library(nnet)
+
+# base category is the first
+thai.mn = multinom(cbind(p, b, ph)~VOT, data=thai)
+summary(thai.mn)
+
+# compare to vglm
+summary(thai.vglm)
+```
+
+## Reformulate multinomial logistic regression model as a log-linear model
+
+```{r}
+# reshape thai data to longer form with counts of each stimulus-response combination
+thai_long = pivot_longer(thai, cols = c("b", "p", "ph"), names_to = "response", values_to = "count")
+# add stimulus factor with one level of 
+thai_long = mutate(thai_long, stimulus = factor(thai_long$VOT))
+# make p the baseline category for the reponse variable, to match the logistic regression analyses above
+thai_long$response = factor(thai_long$response)
+contrasts(thai_long$response) = contr.treatment(levels(thai_long$response), base = 2)
+
+thai.ll = glm(count~stimulus+response*VOT, data=thai_long, family=poisson(link="log"))
+summary(thai.ll)
+
+```
+
+-   The intercepts of the multinomial logistic regression model correspond to the coefficients of the response variable
+
+-   The coefficients of VOT in multinomial logistic regression models correspond to the coefficients of responseC:VOT interactions in the loglinear model
+
+    -   coefficient for the baseline category p is fixed at 0 (hence NA in the model summary)
+
+-   In general, any variables that affect response probabilities must be entered into the loglinear model as interactions with the response variable
+
+-   Ignore stimulus coefficients
