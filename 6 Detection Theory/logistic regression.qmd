@@ -134,9 +134,11 @@ Fit of the logistic regression model to the Whalen data is poor because the voic
 
     -   e.g. in identification of a \[k-g\] continuum, the probability of guessing 'k' on an unattended trial is $p_k$
 
--    Regular detection theory model: $z(p(k)) = \beta_0 + \beta_1 VOT$
+-   Regular detection theory model: $z(p(k)) = \beta_0 + \beta_1 VOT$
 
-    -   $\phi (p(k))=\beta_0+\beta_1VOT$
+```         
+-   $\phi (p(k))=\beta_0+\beta_1VOT$
+```
 
 -   With inattention parameters $p(k) = p_i p_k + (1-p_i)(\beta_0 + \beta_1 VOT)$
 
