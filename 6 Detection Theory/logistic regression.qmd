@@ -136,11 +136,9 @@ Fit of the logistic regression model to the Whalen data is poor because the voic
 
 -   Regular detection theory model: $z(p(k)) = \beta_0 + \beta_1 VOT$
 
-```         
--   $\phi (p(k))=\beta_0+\beta_1VOT$
-```
+-   $p(k)=\Phi(\beta_0+\beta_1VOT)$
 
--   With inattention parameters $p(k) = p_i p_k + (1-p_i)(\beta_0 + \beta_1 VOT)$
+-   With inattention parameters $p(k) = p_i p_k + (1-p_i)\Phi(\beta_0 + \beta_1 VOT)$
 
 This model can be fit using the *psyphy* package:
 
@@ -162,9 +160,16 @@ gamma = pf$gam
 
 Note that coefficient of VOT changes substantially when inattention parameters are added
 
+cf. probit regression model:
+
+```{r}
+votf0dtm = glm(cbind(p,b)~VOT+f0, data=votf0, family=binomial(link="probit")) 
+summary(votf0dtm)
+```
+
 This function actually fits a model of the form
 
-$P(x) = \gamma + ( 1 - \gamma - \lambda )f(x)$
+$p(x) = \gamma + ( 1 - \gamma - \lambda )f(x)$
 
 -   where $f(x)$ is the logit or probit model
 
