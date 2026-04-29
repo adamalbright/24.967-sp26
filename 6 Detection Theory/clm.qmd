@@ -126,7 +126,7 @@ text((c(-1,cpmuneq$alpha)+c(cpmuneq$alpha,cpmuneq$alpha[5]+1))/2, 0.6, 1:6)
 # Ratings of imperfect rhyme acceptability
 
 ```{r}
-Rhyme = read_tsv("~/Documents/Class Materials/24.967 Experimental phonology/Rhyme.txt")
+Rhyme = read_tsv("Rhyme.txt")
 
 # plot the relationship between rating and binned d values
 rhyme_plot = ggplot(Rhyme, 
