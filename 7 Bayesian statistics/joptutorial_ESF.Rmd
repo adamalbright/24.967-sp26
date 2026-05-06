@@ -7,6 +7,7 @@ output: html_document
 ---
 
 This file provides the main code snippets in the paper. Start by loading the relevant libraries.
+Additions by Edward
 
 ```{r setup,message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -29,6 +30,8 @@ library(loo)
 
 library(bayesplot)
 library(stringr)
+
+library(tidyverse)
 ```
 
 # Load data
@@ -288,6 +291,7 @@ lmer and Bayesian mixed effects models
 Does not converge in 2000 iterations with default priors
 
 ```{r}
+CVC = read_csv("../2 Linear Models/engCVC.csv")
 
 lmec4 = lmer(F2C1~C1*F2V+(C1|speaker), data = CVC)
 summary(lmec4)
@@ -310,7 +314,7 @@ does not converge
 
 ```{r}
 
-priors <- c(set_prior("normal(0, 1000)", class = "Intercept"),
+priors <- c(set_prior("normal(500, 300)", class = "b", coef = "Intercept"),
                       set_prior("normal(0, 1)", class = "b", 
                                 coef = "F2V"),
                       set_prior("normal(0, 500)", class = "b",
@@ -325,7 +329,7 @@ priors <- c(set_prior("normal(0, 1000)", class = "Intercept"),
                       set_prior("normal(0, 200)", class = "sigma"),
                       set_prior("lkj(2)", class = "cor"))
 
-bCVC <- brm(formula = F2C1 ~ C1*F2V + (C1 + F2V| speaker),
+bCVC <- brm(formula = F2C1 ~ 0 + Intercept + C1*F2V + (C1 + F2V| speaker),
            data = CVC, family = gaussian(), prior = priors,
            iter = 2000, chains = 4, control = list(adapt_delta = 0.99))
 ```
