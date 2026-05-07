@@ -318,7 +318,8 @@ plot(bCVC, variable = c("Intercept", "b_F2V"))
 
 # non-default priors
 does converge as long as model is specified 0 + Intercept
-but there are still divergent transitions (even after increasing iterations and adapt_delta)
+priors on random effect sd's need to specified separately for C and F2V given their different scales.
+(Previous version had all these priors as normal(0,1)!)
 
 ```{r}
 
@@ -333,7 +334,8 @@ priors <- c(set_prior("normal(500, 300)", class = "b", coef = "Intercept"),
                                 coef = "C1d:F2V"),
                       set_prior("normal(0, 1)", class = "b",
                                 coef = "C1g:F2V"),
-                      set_prior("normal(0, 1)", class = "sd"),
+                      set_prior("normal(0, 100)", class = "sd"),
+                      set_prior("normal(0,0.5)", class = "sd", group = "speaker", coef = "F2V"),
                       set_prior("normal(0, 200)", class = "sigma"),
                       set_prior("lkj(2)", class = "cor"))
 
@@ -353,10 +355,14 @@ plot(bCVC_int, variable = c("b_Intercept", "b_F2V"))
 ```
 
 ### try to translate successful prior to centered intercept 
+500 + 0.7 * *mean(CVC$F2V, na.rm = TRUE) = 1821
+reduced sd's of priors on C1
+other priors as above
+Given these priors, it is not necessary to reduce the sd on the prior on the intercept
 
 ```{r}
 
-priors <- c(set_prior("normal(1604, 50)", class = "Intercept"),
+priors <- c(set_prior("normal(1821, 300)", class = "Intercept"),
                       set_prior("normal(0, 1)", class = "b", 
                                 coef = "F2V"),
                       set_prior("normal(0, 500)", class = "b",
@@ -367,13 +373,14 @@ priors <- c(set_prior("normal(1604, 50)", class = "Intercept"),
                                 coef = "C1d:F2V"),
                       set_prior("normal(0, 1)", class = "b",
                                 coef = "C1g:F2V"),
-                      set_prior("normal(0, 1)", class = "sd"),
+                      set_prior("normal(0, 100)", class = "sd"),
+                      set_prior("normal(0,0.5)", class = "sd", group = "speaker", coef = "F2V"),
                       set_prior("normal(0, 200)", class = "sigma"),
                       set_prior("lkj(2)", class = "cor"))
 
 bCVC_int_center <- brm(formula = F2C1 ~ 1 + C1*F2V + (C1 + F2V| speaker),
            data = CVC, family = gaussian(), prior = priors,
-           iter = 4000, chains = 4, control = list(adapt_delta = 0.99))
+           iter = 2000, chains = 4, control = list(adapt_delta = 0.99))
 ```
 
 summarize model
@@ -382,7 +389,7 @@ summarize model
 summary(bCVC_int_center)
 ```
 ```{r}
-plot(bCVC_int_center, variable = c("Intercept", "b_F2V"))
+plot(bCVC_int_center, variable = c("Intercept", "b_F2V", "b_C1d"))
 ```
 
 ## scaled predictors
