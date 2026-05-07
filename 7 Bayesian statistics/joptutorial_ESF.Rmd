@@ -300,7 +300,7 @@ lmec5 = lmer(F2C1~C1*F2V+(F2V|speaker), data = CVC)
 summary(lmec5)
 
 bCVC <- brm(formula = F2C1 ~ C1*F2V + (C1 + F2V| speaker),
-           data = CVC, family = gaussian(), #prior = priors,
+           data = CVC, family = gaussian(), prior = set_prior("normal(2305, 300)", class = "Intercept"),
            iter = 2000, chains = 4, control = list(adapt_delta = 0.99))
 ```
 
@@ -309,8 +309,16 @@ Summarize the model fit:
 ```{r summaryCVCdata}
 summary(bCVC)
 ```
+## plot (bad) chains
+
+```{r}
+plot(bCVC, variable = c("Intercept", "b_F2V"))
+```
+
+
 # non-default priors
-does not converge
+does converge as long as model is specified 0 + Intercept
+but there are still divergent transitions (even after increasing iterations and adapt_delta)
 
 ```{r}
 
@@ -329,7 +337,7 @@ priors <- c(set_prior("normal(500, 300)", class = "b", coef = "Intercept"),
                       set_prior("normal(0, 200)", class = "sigma"),
                       set_prior("lkj(2)", class = "cor"))
 
-bCVC <- brm(formula = F2C1 ~ 0 + Intercept + C1*F2V + (C1 + F2V| speaker),
+bCVC_int <- brm(formula = F2C1 ~ 0 + Intercept + C1*F2V + (C1 + F2V| speaker),
            data = CVC, family = gaussian(), prior = priors,
            iter = 2000, chains = 4, control = list(adapt_delta = 0.99))
 ```
@@ -337,8 +345,46 @@ bCVC <- brm(formula = F2C1 ~ 0 + Intercept + C1*F2V + (C1 + F2V| speaker),
 Summarize the model fit:
 
 ```{r summaryCVCdata}
-summary(bCVC)
+summary(bCVC_int)
 ```
+## plot chains
+```{r}
+plot(bCVC_int, variable = c("b_Intercept", "b_F2V"))
+```
+
+### try to translate successful prior to centered intercept 
+
+```{r}
+
+priors <- c(set_prior("normal(1604, 50)", class = "Intercept"),
+                      set_prior("normal(0, 1)", class = "b", 
+                                coef = "F2V"),
+                      set_prior("normal(0, 500)", class = "b",
+                                coef = "C1d"),
+                      set_prior("normal(0, 500)", class = "b",
+                                coef = "C1g"),
+                      set_prior("normal(0, 1)", class = "b",
+                                coef = "C1d:F2V"),
+                      set_prior("normal(0, 1)", class = "b",
+                                coef = "C1g:F2V"),
+                      set_prior("normal(0, 1)", class = "sd"),
+                      set_prior("normal(0, 200)", class = "sigma"),
+                      set_prior("lkj(2)", class = "cor"))
+
+bCVC_int_center <- brm(formula = F2C1 ~ 1 + C1*F2V + (C1 + F2V| speaker),
+           data = CVC, family = gaussian(), prior = priors,
+           iter = 4000, chains = 4, control = list(adapt_delta = 0.99))
+```
+
+summarize model
+
+```{r}
+summary(bCVC_int_center)
+```
+```{r}
+plot(bCVC_int_center, variable = c("Intercept", "b_F2V"))
+```
+
 ## scaled predictors
 informative priors
 
@@ -350,7 +396,7 @@ summary(lmec4)
 lmec5 = lmer(scale(F2C1)~C1*scale(F2V)+(scale(F2V)|speaker), data = CVC)
 summary(lmec5)
 
-priors <- c(set_prior("normal(0, 1)", class = "Intercept"),
+priors <- c(set_prior("normal(0, 2)", class = "Intercept"),
                       set_prior("normal(0, 2)", class = "b", 
                                 coef = "F2V_scale"),
                       set_prior("normal(0, 2)", class = "b",
@@ -369,7 +415,7 @@ CVC$F2V_scale = scale(CVC$F2V)
 
 bCVC_scale <- brm(formula = scale(F2C1) ~ C1*F2V_scale + (C1 + F2V_scale| speaker),
            data = CVC, family = gaussian(), prior = priors,
-           iter = 2000, chains = 4, control = list(adapt_delta = 0.99))
+           iter = 2000, chains = 4, control = list(adapt_delta = 0.95))
 ```
 
 Summarize the model fit:
@@ -393,14 +439,14 @@ summary(bCVC_maximal)
 ```{r stanplotCVCdata,warning=FALSE,message=FALSE}
 stanplot(bCVC_maximal, pars = c("^b","sd","sigma"), type="hist")
 ```
-# Posterior predictive check
+## Posterior predictive check
 
 ```{r posteriorpredictivecheck}
 pp_check(bCVC_maximal, ndraws = 100)+
   theme(text = element_text(size=16),legend.text=element_text(size=16))
 ```
 
-# maximal random effects, default priors
+## maximal random effects, default priors
 
 ```{r}
 bCVC_maximal_default <- brm(formula = scale(F2C1) ~ C1*F2V_scale + (C1 * F2V_scale| speaker),
@@ -413,13 +459,13 @@ Summarize the model fit:
 summary(bCVC_maximal_default)
 ```
 
-# plot posterior
+## plot posterior
 
 ```{r}
 stanplot(bCVC_maximal_default, pars = c("^b","sd","sigma"), type="hist")
 ```
 
-# defult priors except for correlations among random effects
+# default priors except for correlations among random effects
 
 ```{r}
 priors <- c(set_prior("lkj(2)", class = "cor"))
@@ -434,10 +480,85 @@ bCVC_maximal_LKJ2 <- brm(formula = scale(F2C1) ~ C1*F2V_scale + (C1 * F2V_scale|
 summary(bCVC_maximal_LKJ2)
 ```
 
-# plot posterior
+## plot posterior
 
 ```{r}
 stanplot(bCVC_maximal_LKJ2, pars = c("^b","sd","sigma"), type="hist")
+```
+
+# Analyses of affricate data
+
+```{r}
+# load affricate data
+affricate_data <- read_csv("../2\ Linear\ Models/affricate_data.csv")
+
+# exclude subject vv
+aff = subset(affricate_data, !(subject=="vv"))
+
+# declare factors
+aff$subject = factor(aff$subject)
+aff$word = factor(aff$word)
+aff$affricate = factor(aff$affricate)
+aff$context = factor(aff$context)
+
+# scale intensity
+aff$intensity_scale = scale(aff$intensity)
+```
+
+Fit brm with default priors
+
+```{r}
+aff.brm = brm(formula = intensity_scale ~ affricate*context + (1 + affricate*context| subject) + (1+context|word),
+           data = aff, family = gaussian(),
+           iter = 2000, chains = 4, control = list(adapt_delta = 0.99))
+```
+
+summarize model
+
+```{r}
+summary(aff.brm)
+```
+compare to lmer
+
+```{r}
+# simplify
+lme_aff_red1 = lmer(scale(intensity)~affricate*context+(1+affricate+context|subject)+(context|word), data=aff)
+summary(lme_aff_red1)
+```
+plot posterior
+
+```{r}
+stanplot(aff.brm, pars = c("^b","sd","sigma"), type="hist")
+```
+sensitivity analysis 1
+LKJ(2)
+
+
+```{r}
+aff.brm = brm(formula = intensity_scale ~ affricate*context + (1 + affricate*context| subject) + (1+context|word), 
+      prior = set_prior("lkj(2)", class = "cor"),
+      data = aff, family = gaussian(),
+      iter = 2000, chains = 4, control = list(adapt_delta = 0.99))
+```
+
+```{r}
+summary(aff.brm)
+```
+sensitivity analysis 2
+LKJ(2), truncated normal sd
+
+```{r}
+priors <- c(
+  set_prior("normal(0, 1)", class = "sd"),
+  set_prior("lkj(2)", class = "cor"))
+
+aff.brm.LKJ.normsd = brm(formula = intensity_scale ~ affricate*context + (1 + affricate*context| subject) + (1+context|word), 
+      prior = priors,
+      data = aff, family = gaussian(),
+      iter = 2000, chains = 4, control = list(adapt_delta = 0.99))
+```
+```{r}
+summary(aff.brm.LKJ.normsd)
 ```
 
 # Measurement error model (Mandarin)
